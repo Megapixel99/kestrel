@@ -314,7 +314,9 @@ final class ExtensionRuntime: NSObject, WKWebExtensionControllerDelegate {
                                 completionHandler: @escaping ((any WKWebExtensionTab)?, (any Error)?) -> Void) {
         guard let browser else { return completionHandler(nil, nil) }
         let url = configuration.url ?? NewTabPage.url()
-        browser.openTab(url: url)
+        // An extension opening one of its own pages needs its own configuration, the
+        // same as the options page does.
+        if !browser.openExtensionPage(url) { browser.openTab(url: url) }
         completionHandler(browser.currentTab, nil)
     }
 
@@ -324,7 +326,10 @@ final class ExtensionRuntime: NSObject, WKWebExtensionControllerDelegate {
         guard let browser, let url = ctx.optionsPageURL else {
             return completionHandler(ExtensionStore.Failure("this add-on has no options page"))
         }
-        browser.openTab(url: url)
+        guard browser.openExtensionPage(url) else {
+            return completionHandler(
+                ExtensionStore.Failure("could not open \(url.lastPathComponent)"))
+        }
         completionHandler(nil)
     }
 

@@ -35,6 +35,7 @@ extension BrowserWindowController {
                 b.identifier = NSUserInterfaceItemIdentifier(entry.id)
                 b.target = self
                 b.action = #selector(extensionActionPressed(_:))
+                b.menu = contextMenu(for: entry.id, action: entry.action)
                 extensionBar.addSubview(b)
             }
 
@@ -46,11 +47,76 @@ extension BrowserWindowController {
         }
     }
 
+    /// Right-click on an add-on's button: whatever menu items the add-on itself provides,
+    /// then its options page. Without this the options page is only reachable if the
+    /// add-on happens to call `runtime.openOptionsPage()` itself.
+    @available(macOS 15.4, *)
+    private func contextMenu(for id: String, action: WKWebExtension.Action) -> NSMenu {
+        let menu = NSMenu()
+        for item in action.menuItems { menu.addItem(item) }
+        if !action.menuItems.isEmpty { menu.addItem(.separator()) }
+
+        let ctx = MainActor.assumeIsolated { ExtensionRuntime.shared.contexts[id] }
+        if ctx?.optionsPageURL != nil {
+            let options = NSMenuItem(title: "Options", action: #selector(extensionOptions(_:)),
+                                     keyEquivalent: "")
+            options.target = self
+            options.representedObject = id
+            menu.addItem(options)
+        }
+        let off = NSMenuItem(title: "Turn Off", action: #selector(extensionTurnOff(_:)),
+                             keyEquivalent: "")
+        off.target = self
+        off.representedObject = id
+        menu.addItem(off)
+        return menu
+    }
+
+    @objc func extensionOptions(_ sender: NSMenuItem) {
+        guard #available(macOS 15.4, *), let id = sender.representedObject as? String else { return }
+        MainActor.assumeIsolated {
+            guard let url = ExtensionRuntime.shared.contexts[id]?.optionsPageURL else {
+                flash("this add-on has no options page")
+                return
+            }
+            if !openExtensionPage(url) { flash("could not open the options page") }
+        }
+    }
+
+    @objc func extensionTurnOff(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String,
+              let ext = ExtensionStore.installed().first(where: { $0.id == id }) else { return }
+        disableExtension(ext)
+        flash("\(ext.name) turned off")
+    }
+
     @objc func extensionActionPressed(_ sender: NSButton) {
         guard #available(macOS 15.4, *), let id = sender.identifier?.rawValue else { return }
         MainActor.assumeIsolated {
             ExtensionRuntime.shared.performAction(id: id, tab: currentTab, from: sender)
         }
+    }
+
+    /// Opens an extension's own page — options, or anything under its base URL — in a tab
+    /// built from that extension's configuration.
+    ///
+    /// WebKit is explicit about this and unforgiving: "navigations will be cancelled if a
+    /// web view not configured with this configuration attempts to navigate to a URL that
+    /// does originate from this extension's base URL." A normal tab therefore shows
+    /// nothing at all, with no error — which is exactly how the options page failed.
+    @available(macOS 15.4, *)
+    @discardableResult
+    func openExtensionPage(_ url: URL) -> Bool {
+        let controller = MainActor.assumeIsolated { ExtensionRuntime.shared.controller }
+        guard let ctx = controller.extensionContext(for: url),
+              let cfg = ctx.webViewConfiguration else { return false }
+        let tab = Tab(id: nextId, url: url,
+                      title: ctx.webExtension.displayName ?? "Extension")
+        tab.extensionConfig = cfg
+        nextId += 1
+        tabs.append(tab)
+        select(tab)
+        return true
     }
 
     /// Where an extension's popup should point when the extension asks to open it

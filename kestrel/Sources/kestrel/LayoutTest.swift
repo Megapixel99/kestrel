@@ -53,6 +53,14 @@ enum LayoutTest {
         }
 
         // --- both tab layouts, since one hides a bar the other positions against ---
+        // Prefs is UserDefaults, and this binary shares a domain with the browser, so
+        // leaving the flag flipped changed the user's actual tab layout — which is
+        // exactly what happened: the test ended on `true` and the next launch came up
+        // with vertical tabs. A test may not have side effects on the thing it tests.
+        // Restored explicitly rather than with `defer`, because this function ends in
+        // exit() and exit() does not run deferred blocks — the same trap exttest fell
+        // into.
+        let userLayout = Prefs.verticalTabs
         for vertical in [false, true] {
             Prefs.verticalTabs = vertical
             browser.applyTabLayout()
@@ -95,6 +103,8 @@ enum LayoutTest {
             problems += audit(find, context: "find bar @\(Int(width))", recurse: false)
             checked += 1
         }
+
+        Prefs.verticalTabs = userLayout
 
         print("Layout check — \(checked) layouts\n")
         if problems.isEmpty {

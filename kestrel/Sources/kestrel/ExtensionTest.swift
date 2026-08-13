@@ -38,6 +38,8 @@ enum ExtensionTest {
         write(manifest, to: src.appendingPathComponent("manifest.json"))
         write(contentScript, to: src.appendingPathComponent("content.js"))
         write(background, to: src.appendingPathComponent("background.js"))
+        write("<html><body><h1 id=\"opts\">kestrel-options-page</h1></body></html>",
+              to: src.appendingPathComponent("options.html"))
 
         let xpi = tmp.appendingPathComponent("kestrel-test.xpi")
         let zip = Process()
@@ -131,6 +133,28 @@ enum ExtensionTest {
         check("the background script replied to it", reply == "pong",
               reply.map { $0.isEmpty ? "no reply" : $0 } ?? "no reply")
 
+        // The options page lives at webkit-extension://…, which only loads in a web view
+        // built from the extension's own configuration — WebKit cancels the navigation in
+        // any other. A plain tab showed nothing at all, with no error.
+        var optionsText: String?
+        if let optionsURL = ctx.optionsPageURL {
+            check("the extension has an options page", true, optionsURL.lastPathComponent)
+            let opened = browser.openExtensionPage(optionsURL)
+            check("opened it in a tab of its own", opened)
+            if opened, let ov = browser.currentTab?.webView {
+                wait(seconds: 15) { done in
+                    poll(ov, every: 0.4, until: 14, script:
+                         "document.getElementById('opts')?.textContent ?? ''") { v in
+                        optionsText = v; done()
+                    }
+                }
+            }
+            check("the options page rendered", optionsText == "kestrel-options-page",
+                  optionsText ?? "blank")
+        } else {
+            check("the extension has an options page", false, "optionsPageURL was nil")
+        }
+
         runtime.unload(ext.id)
         finishAndClean(failures)
     }
@@ -148,6 +172,7 @@ enum ExtensionTest {
       "content_scripts": [
         { "matches": ["<all_urls>"], "js": ["content.js"], "run_at": "document_end" }
       ],
+      "options_ui": { "page": "options.html", "open_in_tab": true },
       "sidebar_action": { "default_panel": "panel.html", "default_title": "Nope" },
       "browser_specific_settings": { "gecko": { "id": "test@kestrel" } }
     }
@@ -188,13 +213,14 @@ enum ExtensionTest {
     /// timing is not something to guess at, and a fixed sleep is how a flaky test starts.
     @MainActor
     private static func poll(_ wv: WKWebView, every: TimeInterval, until deadline: TimeInterval,
+                             script: String =
+                                "document.getElementById('kestrel-test')?.textContent ?? ''",
                              found: @escaping (String?) -> Void) {
         var elapsed: TimeInterval = 0
         var timer: Timer?
         timer = Timer.scheduledTimer(withTimeInterval: every, repeats: true) { t in
             elapsed += every
-            wv.evaluateJavaScript(
-                "document.getElementById('kestrel-test')?.textContent ?? ''") { v, _ in
+            wv.evaluateJavaScript(script) { v, _ in
                 let s = v as? String ?? ""
                 if !s.isEmpty {
                     t.invalidate(); timer = nil; found(s)

@@ -141,8 +141,22 @@ final class Tab: NSObject {
         wv.frame = container.bounds
     }
 
+    /// An extension page — `webkit-extension://…/options.html` — can only load in a web
+    /// view built from its own context's configuration. WebKit cancels the navigation
+    /// otherwise, which is what made an add-on's options page come up blank. When this is
+    /// set the tab uses it verbatim and skips the page-facing injections: dark mode and
+    /// userscripts have no business inside an extension's own UI.
+    var extensionConfig: WKWebViewConfiguration?
+
     private func makeLive(in container: NSView) {
-        if webView == nil {
+        if webView == nil, let cfg = extensionConfig {
+            cfg.applicationNameForUserAgent = UserAgent.applicationName
+            let wv = WKWebView(frame: container.bounds, configuration: cfg)
+            wv.autoresizingMask = [.width, .height]
+            webView = wv
+            container.addSubview(wv)
+            loadCurrent(into: wv)
+        } else if webView == nil {
             let before = Tab.lastKnownPids
             let cfg = WKWebViewConfiguration()
             cfg.processPool = WKProcessPool()

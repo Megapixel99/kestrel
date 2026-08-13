@@ -1289,6 +1289,15 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
             downloadAndInstallExtension(from: url)
             return
         }
+        // WebKit requires the web view to be swapped when navigating into an extension's
+        // own pages, so a link to one is moved into a tab built for it.
+        if #available(macOS 15.4, *), let url, url.scheme == "webkit-extension",
+           webView.configuration.webExtensionController != nil,
+           tabs.first(where: { $0.webView === webView })?.extensionConfig == nil {
+            decisionHandler(.cancel)
+            openExtensionPage(url)
+            return
+        }
         decisionHandler(.allow)
     }
 
