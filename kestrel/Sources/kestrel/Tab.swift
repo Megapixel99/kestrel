@@ -187,6 +187,7 @@ final class Tab: NSObject {
                 }
             }
             cfg.userContentController.addUserScript(SessionStore.captureScript())
+            cfg.userContentController.addUserScript(PageWebView.contextTargetScript())
             cfg.userContentController.addUserScript(NetworkMonitor.captureScript())
             let wv = WKWebView(frame: container.bounds, configuration: cfg)
             wv.autoresizingMask = [.width, .height]
@@ -212,6 +213,7 @@ final class Tab: NSObject {
                 }
             }
             cfg.userContentController.addUserScript(SessionStore.captureScript())
+            cfg.userContentController.addUserScript(PageWebView.contextTargetScript())
             cfg.userContentController.addUserScript(NetworkMonitor.captureScript())
             // Extensions attach per configuration, so a tab restored from COLD comes
             // back with the same add-ons the rest of the window has.
@@ -221,7 +223,7 @@ final class Tab: NSObject {
                     ExtensionWeb.attach(to: cfg)
                 }
             }
-            let wv = WKWebView(frame: container.bounds, configuration: cfg)
+            let wv = PageWebView(frame: container.bounds, configuration: cfg)
             wv.autoresizingMask = [.width, .height]
             webView = wv
             handlersAttached = false

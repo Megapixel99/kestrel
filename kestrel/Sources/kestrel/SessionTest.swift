@@ -171,6 +171,65 @@ enum SessionTest {
                   ContainerStore.store(for: a) === ContainerStore.store(for: a))
         }
 
+        // --- the docked developer panel ---
+        // Each pane is asserted on the thing it is for: the inspector must return a tree
+        // with real tags in it, and the styles for a path must be the styles of that
+        // element rather than a plausible-looking blob.
+        let domPage = """
+        <html><body>
+          <div id="wrap"><p class="lead">hello</p><p>second</p></div>
+          <span id="mark" style="width:123px;display:block">x</span>
+        </body></html>
+        """
+        browser.openTab(url: URL(string: "https://example.com/dom")!)
+        guard let domTab = browser.currentTab, let domView = domTab.webView else {
+            finish(failures + 1)
+        }
+        domView.loadHTMLString(domPage, baseURL: URL(string: "https://example.com/dom"))
+        settle(3)
+
+        check("the page web view is the subclass that adds Inspect to the menu",
+              domView is PageWebView, String(describing: type(of: domView)))
+
+        var snapshot: String?
+        wait(10) { done in
+            domView.evaluateJavaScript(InspectorPane.snapshotScriptForTest) { v, e in
+                snapshot = (v as? String) ?? e?.localizedDescription; done()
+            }
+        }
+        check("the inspector snapshot is a tree", snapshot?.contains("\"children\"") == true,
+              snapshot.map { String($0.prefix(60)) } ?? "nil")
+        check("...containing the page's own elements",
+              snapshot?.contains("wrap") == true && snapshot?.contains("lead") == true)
+
+        var styleText: String?
+        wait(10) { done in
+            domView.evaluateJavaScript(
+                InspectorPane.stylesScriptForTest("span#mark")) { v, _ in
+                styleText = v as? String; done()
+            }
+        }
+        check("computed styles come back for a path", styleText?.contains("COMPUTED") == true,
+              styleText.map { String($0.prefix(40)).replacingOccurrences(of: "\n", with: " ") }
+                ?? "nil")
+        check("...and are that element's, not another's",
+              styleText?.contains("123px") == true,
+              styleText?.contains("width") == true ? "width present but wrong" : "no width")
+
+        // The right-click path: the page records what was clicked, and Inspect reads it.
+        var target: String?
+        wait(10) { done in
+            domView.evaluateJavaScript("""
+            (function () {
+              var el = document.querySelector('p.lead');
+              el.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true}));
+              return window.__kestrelInspectTarget || '';
+            })()
+            """) { v, _ in target = v as? String; done() }
+        }
+        check("a right-click records the element under the cursor",
+              target?.contains("p") == true, target ?? "nothing recorded")
+
         // --- reader view, and what it costs ---
         // The claim is that a reader document is a fraction of the page. Measured, not
         // assumed: an article page with a pile of chrome around it, then the extraction.

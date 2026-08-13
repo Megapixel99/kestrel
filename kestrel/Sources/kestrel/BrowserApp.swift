@@ -48,6 +48,9 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
     var spinnerTimer: Timer?
     var networkWindow: NetworkWindowController?
     let suggestions = SuggestionList()
+    var devPanel: DevPanel?
+    /// Remembered so reopening the panel returns it to the height you left it at.
+    private var devPanelHeight: CGFloat = 320
     /// Session writes are cheap but not free; this throttles them to roughly every 10 s
     /// of ticks, plus the explicit saves on close and quit.
     private var ticksSinceSave = 0
@@ -412,7 +415,8 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
         add("Web Inspector", #selector(openInspector), "i", [.command, .option])
         add("Task Manager", #selector(openTaskManager), "\u{1b}", [.shift])
         add("Browser Console", #selector(openConsole), "j", [.command, .shift])
-        add("Network", #selector(openNetworkPanel), "e", [.command, .option])
+        add("Toggle Developer Panel", #selector(toggleDevPanel), "i", [.command, .option])
+        add("Network (window)", #selector(openNetworkPanel), "e", [.command, .option])
         add("Memory (about:memory)", #selector(openMemoryPage))
         menu.addItem(.separator())
 
@@ -869,6 +873,12 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
         tab.webView?.navigationDelegate = self
         tab.webView?.uiDelegate = self
         attachPageHandlers(to: tab)
+        if let page = tab.webView as? PageWebView {
+            page.onInspect = { [weak self] path in self?.openDevPanel(inspecting: path) }
+            page.onViewSource = { [weak self] in self?.viewSource() }
+        }
+        devPanel?.attach(to: tab)
+        layoutDevPanel()
         tab.lastUsed = Date()
         tab.uses += 1
         foregroundId = tab.id
@@ -1042,6 +1052,68 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
         flash("\(c.name) container — its own cookies, cache and storage")
     }
 
+    /// Opens the docked panel, optionally on a specific element.
+    func openDevPanel(inspecting path: String? = nil) {
+        if devPanel == nil {
+            let p = DevPanel(frame: NSRect(x: 0, y: 0, width: webContainer.bounds.width,
+                                           height: devPanelHeight))
+            p.autoresizingMask = [.width]
+            p.browser = self
+            p.onClose = { [weak self] in self?.closeDevPanel() }
+            p.onHeightChange = { [weak self] h in
+                guard let self else { return }
+                self.devPanelHeight = min(max(DevPanel.minHeight, h),
+                                          self.webContainer.bounds.height - 80)
+                self.layoutDevPanel()
+            }
+            webContainer.addSubview(p)
+            devPanel = p
+            // The web view's autoresizing would otherwise grow it back over the panel on
+            // the next window resize.
+            NotificationCenter.default.addObserver(
+                forName: NSWindow.didResizeNotification, object: window, queue: .main
+            ) { [weak self] _ in MainActor.assumeIsolated { self?.layoutDevPanel() } }
+        }
+        devPanel?.inspect(path: path, in: currentTab)
+        layoutDevPanel()
+    }
+
+    @objc func toggleDevPanel() {
+        if devPanel == nil { openDevPanel() } else { closeDevPanel() }
+    }
+
+    func closeDevPanel() {
+        devPanel?.removeFromSuperview()
+        devPanel = nil
+        NotificationCenter.default.removeObserver(self, name: NSWindow.didResizeNotification,
+                                                  object: window)
+        currentTab?.webView?.autoresizingMask = [.width, .height]
+        // Take the highlight overlay with it, or the page keeps a blue box on it.
+        currentTab?.webView?.evaluateJavaScript(
+            "var b=document.getElementById('__kestrel_highlight'); if(b) b.remove();")
+        layoutDevPanel()
+    }
+
+    /// The panel takes its height off the bottom of the web view rather than floating
+    /// over it: a tool that covers the thing it describes is not much of a tool.
+    func layoutDevPanel() {
+        let h = webContainer.bounds.height
+        guard let panel = devPanel else {
+            currentTab?.webView?.frame = webContainer.bounds
+            placeholder.frame = webContainer.bounds
+            return
+        }
+        let ph = min(max(DevPanel.minHeight, devPanelHeight), h - 80)
+        panel.frame = NSRect(x: 0, y: 0, width: webContainer.bounds.width, height: ph)
+        let above = NSRect(x: 0, y: ph, width: webContainer.bounds.width, height: h - ph)
+        // Height is managed here, not by the autoresizing mask, or the web view springs
+        // back over the panel on the next resize.
+        currentTab?.webView?.autoresizingMask = [.width]
+        currentTab?.webView?.frame = above
+        placeholder.frame = above
+        panel.refresh()
+    }
+
     @objc func openNetworkPanel() {
         if networkWindow == nil { networkWindow = NetworkWindowController() }
         networkWindow?.show()
@@ -1051,6 +1123,7 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
         sampleMemory()
         applyBudgetAndRefresh()
         refreshMemoryPages()
+        devPanel?.refresh()
         // Firefox writes the session periodically rather than only at quit, so a crash
         // costs seconds of state instead of the whole window. ~10 s at this tick rate.
         ticksSinceSave += 1

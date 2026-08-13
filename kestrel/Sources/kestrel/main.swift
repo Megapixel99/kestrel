@@ -28,6 +28,8 @@ case "exttest":
     ExtensionTest.run()
 case "extscan":
     ExtensionScan.run(paths: Array(args.dropFirst(2)))
+case "dnrtest":
+    DynamicRuleTest.run()
 case "blocktest":
     BlockTest.run(args: Array(args.dropFirst(2)))
 case "extdiag":

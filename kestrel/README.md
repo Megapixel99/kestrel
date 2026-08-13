@@ -111,6 +111,23 @@ account for.
 
 ## Developer tools
 
+**Right-click a page → Inspect** opens a panel docked under it, in the shape Firefox uses,
+with three tabs:
+
+- **Inspector** — the DOM as a tree, the selected element's box, attributes and computed
+  styles, a breadcrumb, and a highlight drawn over the element in the page. Right-clicking
+  selects what was under the cursor: the page records the target on `contextmenu`, because
+  by the time the menu item fires the cursor has moved.
+- **Network** — the request list from `NetworkMonitor`, with headers where headers exist.
+- **Memory** — the budget and every tab's footprint, live.
+
+None of the three is a `WKWebView`. Firefox's devtools are themselves a web page; spending a
+web content process on the tool that reports web content processes would be a poor joke in a
+browser with a memory budget. The panel takes its height off the page rather than floating
+over it, and the top edge drags.
+
+## Developer tools (windows)
+
 Behind the wrench, in the shape Firefox uses: **Task Manager** (per-tab state, memory,
 process id, restore latency), Browser Console, Web Inspector, Responsive Design Mode,
 Eyedropper, Page Source.

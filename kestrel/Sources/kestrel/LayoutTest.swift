@@ -70,6 +70,21 @@ enum LayoutTest {
             checked += 1
         }
 
+        // The docked developer panel, in each of its three panes. It has three scroll
+        // views, and a zero-sized document view in one of them is invisible to every other
+        // check here — see the network panel's header pane.
+        for size in [NSSize(width: 1200, height: 320), NSSize(width: 760, height: 160)] {
+            let dp = DevPanel(frame: NSRect(origin: .zero, size: size))
+            dp.browser = browser
+            for pane in [DevPanel.Pane.inspector, .network, .memory] {
+                dp.show(pane)
+                dp.layoutSubtreeIfNeeded()
+                problems += audit(dp, context: "dev panel \(pane) @\(Int(size.width))",
+                                  recurse: true)
+                checked += 1
+            }
+        }
+
         // The network panel, which is laid out by hand like the rest.
         let net = NetworkWindowController()
         defer { net.window.close() }
@@ -242,7 +257,9 @@ enum LayoutTest {
     /// A plain view we laid out ourselves, rather than an AppKit control.
     private static func isOurContainer(_ v: NSView) -> Bool {
         guard type(of: v) == NSView.self || v is URLBarView || v is TabStripView
-                || v is MemoryBar || v is ExtensionRow else { return false }
+                || v is MemoryBar || v is ExtensionRow || v is DevPanel
+                || v is InspectorPane || v is NetworkPane || v is MemoryPane
+        else { return false }
         return !(v is WKWebView)
     }
 
