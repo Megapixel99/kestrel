@@ -192,3 +192,40 @@ simulation used — concentrated so hard on recent tabs that only 9 of 10 were e
 
 **Lesson.** When every arm of an experiment agrees, check that the independent variable was
 actually varied before believing the result.
+
+---
+
+## 9. The add-on memory benchmark measured Safari
+
+The first run of `kestrel extmem` — how much memory a real Firefox add-on costs — opened
+with this:
+
+```
+baseline: browser + 1 tab = 723 MB across 14 web processes
+...
+Pink                                889 MB   -3 MB    none
+```
+
+723 MB for one tab is not believable, and an add-on cannot cost minus three megabytes. Both
+symptoms have one cause: `MemoryProbe.webContentPids()` returns **every** WebContent process
+on the machine, whoever spawned them. Its own doc comment says so — "whoever spawned them.
+Filtering to our own children is done by `Snapshot` below" — and I used it without the
+filter. The baseline was mostly Safari, and the deltas were partly other applications
+breathing.
+
+Recording the pid set *before* the browser exists and subtracting it fixes both:
+
+```
+baseline: browser + 1 tab = 50 MB across 1 web process of ours (13 others ignored)
+8 add-ons: 244 MB on top of a 50 MB browser
+```
+
+The corrected total reproduces across runs (244 MB, 248 MB). The per-add-on rows still go
+negative, because each is a delta from the previous one and WebKit reclaims on its own
+schedule — so the tool now says to read the total and not the rows, rather than presenting
+noise as precision.
+
+**Lesson.** Same shape as §2: the instrumentation was wrong in a way that produced a
+plausible-looking table. The tell was not the negative row — it was the 723 MB baseline,
+a number I could have sanity-checked against the browser sitting in front of me before
+writing any of the analysis.

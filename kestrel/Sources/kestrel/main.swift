@@ -42,6 +42,12 @@ case "filters":
     FilterTest.run(path: args.count > 2 ? args[2] : nil)
 case "darktest":
     DarkTest.run()
+case "exttest":
+    ExtensionTest.run()
+case "extscan":
+    ExtensionScan.run(paths: Array(args.dropFirst(2)))
+case "extmem":
+    ExtensionMemory.run(paths: Array(args.dropFirst(2)))
 case "layouttest":
     // `layouttest <dir>` also writes a PNG of each add-ons pane there.
     if args.count > 2 {

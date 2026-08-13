@@ -21,7 +21,7 @@ enum TabState: Int, Comparable, CustomStringConvertible {
 ///   COLD   39 MB   interactionState captured, page navigated away -- 70% back,
 ///                  restores in ~82 ms
 ///   STUB   ~0 MB   web view destroyed (but see the process-cache caveat)
-final class Tab {
+final class Tab: NSObject {
     let id: Int
     var url: URL
     var title: String
@@ -61,11 +61,14 @@ final class Tab {
     /// synchronously on the main thread.
     static var lastKnownPids: Set<Int32> = []
 
+    // NSObject because WKWebExtensionTab requires it: WebKit's extension runtime talks
+    // to tabs through an Objective-C protocol.
     init(id: Int, url: URL, title: String? = nil) {
         self.id = id
         self.url = url
         self.title = title
             ?? (NewTabPage.isNewTab(url) ? "New Tab" : (url.host ?? url.absoluteString))
+        super.init()
     }
 
     /// Last sampled footprint. Reading this is free.
@@ -151,6 +154,11 @@ final class Tab {
             // accurate: this really is WebKit.
             cfg.applicationNameForUserAgent = UserAgent.applicationName
             ContentBlocker.apply(to: cfg)
+            // Extensions attach per configuration, so a tab restored from COLD comes
+            // back with the same add-ons the rest of the window has.
+            if #available(macOS 15.4, *) {
+                MainActor.assumeIsolated { ExtensionRuntime.apply(to: cfg) }
+            }
             for script in UserScriptStore.loadAll()
             where Prefs.isScriptEnabled(script.name) {
                 cfg.userContentController.addUserScript(script.wrapped())

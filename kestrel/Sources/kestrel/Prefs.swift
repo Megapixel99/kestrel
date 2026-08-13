@@ -109,4 +109,29 @@ enum Prefs {
         if enabled { set.remove(host.lowercased()) } else { set.insert(host.lowercased()) }
         blockingDisabledHosts = set
     }
+
+    /// Installed add-ons are opt-in: an extension on disk does nothing until enabled,
+    /// because enabling it is the moment its permissions are granted.
+    static var enabledExtensions: Set<String> {
+        get { Set(d.stringArray(forKey: "enabledExtensions") ?? []) }
+        set { d.set(Array(newValue), forKey: "enabledExtensions") }
+    }
+    static func isExtensionEnabled(_ id: String) -> Bool { enabledExtensions.contains(id) }
+    static func setExtensionEnabled(_ on: Bool, id: String) {
+        var s = enabledExtensions
+        if on { s.insert(id) } else { s.remove(id) }
+        enabledExtensions = s
+    }
+
+    /// WebKit keys an extension's storage by `uniqueIdentifier`. Handing it a fresh UUID
+    /// each launch would wipe the add-on's settings every time Kestrel started, so the
+    /// first one generated is kept.
+    static func extensionUUID(for id: String) -> String {
+        var map = (d.dictionary(forKey: "extensionUUIDs") as? [String: String]) ?? [:]
+        if let existing = map[id] { return existing }
+        let fresh = UUID().uuidString
+        map[id] = fresh
+        d.set(map, forKey: "extensionUUIDs")
+        return fresh
+    }
 }

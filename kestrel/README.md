@@ -40,11 +40,33 @@ says explicitly when the budget is *unreachable* rather than silently sitting ov
 reopen closed tab (⇧⌘T), zoom (⌘+/−/0), print (⌘P), save page as web archive, pop-up
 handling, and a search-or-navigate address bar.
 
-## Add-ons
+## Firefox add-ons
+
+**They run.** A Firefox add-on is a WebExtension — an `.xpi` is a ZIP with a
+`manifest.json` — and since macOS 15.4 WebKit ships the same WebExtensions runtime Safari
+uses, available to any `WKWebView` app. Kestrel does not reimplement the extension API: it
+unpacks the add-on and hands it to WebKit.
+
+```bash
+./.build/debug/kestrel extscan ~/Library/Application\ Support/Firefox/Profiles/*/extensions
+```
+
+All 25 add-ons installed in the Firefox profiles on the development machine load, uBlock
+Origin, NoScript and Greasemonkey among them. What does *not* survive is the Gecko-only
+surface — sidebars, themes, container tabs, the `downloads`/`history`/`privacy` APIs — so
+each add-on is checked against that list and told to you **before** you enable it, along
+with the permissions it wants. Nothing is granted without that dialog.
+
+Add-ons cost memory the ladder cannot reclaim, and `kestrel extmem` measures it: the eight
+add-ons in the current Firefox profile add **244 MB** to a 50 MB browser, because a
+background page belongs to no tab and cannot be parked. That is a floor the budget has to
+account for.
+
+## Built-in add-ons
 
 The puzzle icon opens a popover listing Kestrel's built-in features in the shape browsers
-use for extensions. They are not installable extensions and the UI says so — there is no
-extension runtime here.
+use for extensions, alongside any real add-ons installed. The built-in ones are not
+installable extensions and the UI says so.
 
 | | |
 |---|---|
@@ -90,6 +112,9 @@ Every mode below is a real check, not a smoke test.
 
 | mode | what it does |
 |---|---|
+| `exttest` | Builds a Firefox add-on, packs it as an `.xpi`, installs it, and asserts its content script ran in a page and its background script answered |
+| `extscan <dirs>` | Hands every `.xpi` in a directory to WebKit and reports which load and what each loses |
+| `extmem <dirs>` | Measures what each add-on costs, one at a time, with background pages forced to run |
 | `selftest` | ~40 assertions: blocklist, userscript parsing, dark mode, QR, tab switching, prefs, password generator, user agent, per-site exclusions |
 | `layouttest [dir] [dark]` | Builds 16 layouts — every add-ons pane, both tab layouts, the screenshot editor, the userscript dashboard, the find bar — and fails on any control that escapes its parent, overlaps a sibling, or is narrower than its own title. Given a directory it also writes a PNG of every add-ons pane, so they can be reviewed without clicking through the running browser |
 | `probe` | Spawns *n* tabs, maps each to its WebContent process, drives one through the ladder and reports what each rung costs |
@@ -134,6 +159,10 @@ real work off-main. Getting this wrong dropped a quarter of frames while scrolli
 **Content rules compile asynchronously.** Tabs created before compilation finishes get no
 blocking at all, so startup waits and `retrofitBlocker()` attaches rules to existing tabs.
 
+**An extension's background page is not a tab.** It has no place on the ladder, cannot be
+demoted without breaking the add-on, and so raises the floor rather than competing for the
+budget. Measure it with `extmem` before setting a budget on a machine with add-ons.
+
 **Third-party-only rules miss first-party ads.** Sites serving ads from their own origin
 (MDN's `/pong/`) are invisible to any rule carrying `load-type: third-party`.
 
@@ -167,5 +196,8 @@ Sources/kestrel/
   FindBar.swift          find in page
   ScriptManager.swift    userscript dashboard
   UserAgent.swift        the Safari product token WKWebView omits
+  Extensions.swift       .xpi install, the WKWebExtension runtime, permissions
+  ExtensionBridge.swift  Kestrel's tabs and window, described to that runtime
+  ExtensionToolbar.swift add-on buttons, popups, the permission dialog
   *Test.swift, Diag/AB   the headless checks and diagnostics above
 ```

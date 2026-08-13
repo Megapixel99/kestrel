@@ -81,6 +81,17 @@ final class AddonsPopoverController: NSViewController {
                   tint: .systemGreen,
                   status: { "Page, region, element, PDF" },
                   available: { true }),
+            Addon(id: "extensions", name: "Firefox Add-ons",
+                  symbol: "puzzlepiece.extension",
+                  tint: .systemPurple,
+                  status: {
+                      guard ExtensionStore.isSupportedOS else { return "Needs macOS 15.4" }
+                      let all = ExtensionStore.installed()
+                      let on = all.filter { Prefs.isExtensionEnabled($0.id) }.count
+                      if all.isEmpty { return "None installed — open an .xpi" }
+                      return "\(on) of \(all.count) enabled"
+                  },
+                  available: { ExtensionStore.isSupportedOS }),
         ]
     }
 
@@ -182,6 +193,7 @@ final class AddonsPopoverController: NSViewController {
         case "bitwarden":   buildBitwarden(in: body)
         case "refresh":     buildRefresh(in: body)
         case "capture":     buildCapture(in: body)
+        case "extensions":  buildExtensions(in: body)
         default: break
         }
         push(v, animated: true)
@@ -615,6 +627,94 @@ final class AddonsPopoverController: NSViewController {
         note.font = .systemFont(ofSize: 9.5)
         note.textColor = .tertiaryLabelColor
         v.addSubview(note)
+    }
+
+    /// Real WebExtensions, listed with what each one asks for and what it will not get.
+    private func buildExtensions(in v: NSView) {
+        var y = v.bounds.height - 40
+        y = AddonStyle.banner("Firefox Add-ons", tint: .systemPurple, in: v, y: y)
+
+        guard ExtensionStore.isSupportedOS else {
+            _ = AddonStyle.caption("WebKit's extension runtime ships with macOS 15.4. "
+                                   + "This Mac is older, so add-ons cannot run here.",
+                                   in: v, y: y - 10)
+            return
+        }
+
+        let installed = ExtensionStore.installed()
+        if installed.isEmpty {
+            let none = NSTextField(labelWithString: "No add-ons installed")
+            none.frame = NSRect(x: 0, y: y - 6, width: v.bounds.width, height: 20)
+            none.alignment = .center
+            none.font = .systemFont(ofSize: 13)
+            none.textColor = .secondaryLabelColor
+            v.addSubview(none)
+            y -= 34
+        }
+
+        for ext in installed.prefix(4) {
+            let on = Prefs.isExtensionEnabled(ext.id)
+            let gaps = ExtensionStore.gaps(in: ext)
+            var subtitle = "v\(ext.version) · MV\(ext.manifestVersion)"
+            if let err = extensionLoadError(ext.id) {
+                subtitle = "failed: \(err)"
+            } else if !gaps.isEmpty {
+                subtitle += " · no \(gaps.joined(separator: ", "))"
+            }
+            y = AddonStyle.toggleRow(ext.name, subtitle: subtitle, on: on, in: v, y: y,
+                                     target: self, action: #selector(extensionToggled(_:)),
+                                     tag: installed.firstIndex { $0.id == ext.id } ?? 0)
+        }
+
+        y -= 4
+        AddonStyle.wideButton("Install add-on\u{2026}", in: v, y: y, target: self,
+                              action: #selector(extensionInstall))
+        y -= 34
+        if !installed.isEmpty {
+            AddonStyle.wideButton("Open add-ons folder", in: v, y: y, target: self,
+                                  action: #selector(extensionFolder))
+        }
+
+        let note = NSTextField(wrappingLabelWithString:
+            "Firefox add-ons are WebExtensions, and WebKit runs them natively since "
+            + "macOS 15.4 — so an .xpi installs and runs here without a compatibility "
+            + "layer. Gecko-only pieces (sidebars, themes, container tabs) do not, and "
+            + "each add-on says which of those it uses before you enable it.")
+        note.frame = NSRect(x: 16, y: 10, width: v.bounds.width - 32, height: 66)
+        note.alignment = .center
+        note.font = .systemFont(ofSize: 9.5)
+        note.textColor = .tertiaryLabelColor
+        v.addSubview(note)
+    }
+
+    private func extensionLoadError(_ id: String) -> String? {
+        guard #available(macOS 15.4, *) else { return nil }
+        return MainActor.assumeIsolated { ExtensionRuntime.shared.loadErrors[id] }
+    }
+
+    @objc private func extensionToggled(_ sender: NSSwitch) {
+        let installed = ExtensionStore.installed()
+        guard installed.indices.contains(sender.tag) else { return }
+        let ext = installed[sender.tag]
+        if sender.state == .on {
+            guard browser?.confirmPermissions(for: ext) == true else {
+                sender.state = .off
+                return
+            }
+            Prefs.setExtensionEnabled(true, id: ext.id)
+            browser?.enableExtension(ext)
+        } else {
+            browser?.disableExtension(ext)
+        }
+    }
+
+    @objc private func extensionInstall() {
+        browser?.installExtension()
+        showDetail(addons.first { $0.id == "extensions" }!)
+    }
+
+    @objc private func extensionFolder() {
+        NSWorkspace.shared.open(ExtensionStore.dir)
     }
 
     // MARK: - navigation

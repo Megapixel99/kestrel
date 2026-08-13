@@ -1,0 +1,23 @@
+baseline: browser + 1 tab = 50 MB across 1 web process(es) of ours (13 others on this Mac ignored)
+
+add-on                              after    delta    procs background
+-------------------------------------------------------------------------------
+Dark Reader                         82 MB    +32 MB   2    ran
+Tampermonkey                        97 MB    +15 MB   3    ran
+Tab Reloader (page auto refresh)    216 MB   +119 MB  5    ran
+Take Webpage Screenshots Entirely   204 MB   -12 MB   6    ran
+Pink                                197 MB   -7 MB    6    none
+Bitwarden Password Manager          252 MB   +55 MB   7    ran
+QR Code                             265 MB   +13 MB   8    ran
+Adblock Plus - free ad blocker      292 MB   +27 MB   9    ran
+-------------------------------------------------------------------------------
+8 add-ons: 242 MB on top of a 50 MB browser — 30 MB each on average.
+Most expensive: Tab Reloader (page auto refresh) at 119 MB.
+
+Read the total, not the rows. Each add-on is measured as a delta from the one
+before it, and WebKit reclaims memory on its own schedule, so individual rows go
+negative. The total is stable across runs; the rows are not.
+
+This memory belongs to no tab, so the ladder cannot reclaim it: a background page
+is not a page anyone is looking at, and demoting it would break the add-on. It is
+a fixed addition to the floor, which is exactly what a memory budget has to know.

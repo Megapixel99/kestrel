@@ -15,6 +15,7 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
     /// tabs can move the whole bar; positioning them individually left a dead 38 pt
     /// gap where the hidden strip used to be.
     let navBar = NSView()
+    let extensionBar = NSView()
     let sidebar = NSScrollView()
     let sidebarTable = NSTableView()
     var urlBar: URLBarView!
@@ -138,6 +139,13 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
         urlBar.onQR = { [weak self] in self?.showQR() }
         urlBar.onBookmark = { [weak self] in self?.toggleBookmark() }
         navBar.addSubview(urlBar)
+
+        // Extension toolbar buttons sit to the left of the built-in menus, where every
+        // browser puts them. Width is decided by how many add-ons are enabled, so the
+        // container is positioned and the URL bar trimmed in refreshExtensionButtons().
+        extensionBar.frame = NSRect(x: W - rightW - 8, y: navY + 8, width: 0, height: 26)
+        extensionBar.autoresizingMask = [.minXMargin]
+        navBar.addSubview(extensionBar)
 
         var bx = W - rightW - 8
         func rightIcon(_ symbol: String, _ fallback: String, _ sel: Selector, _ tip: String) {
@@ -1038,6 +1046,7 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
 
         updateNavButtons()
         refreshTabStrip()
+        refreshExtensionButtons()   // per-tab badges and enabled state
     }
 
     func updateSecurityIndicator(for tab: Tab) {
@@ -1454,6 +1463,9 @@ enum BrowserApp {
             if controller.tabs.isEmpty && !controller.restoreSession() {
                 controller.openTab(url: NewTabPage.url())
             }
+            // After the first tab exists: an extension asking `tabs.query` during load
+            // should see a window with something in it.
+            controller.startExtensions()
         }
         NSApplication.shared.activate(ignoringOtherApps: true)
         // Persist the session on quit so restore has something to work with.

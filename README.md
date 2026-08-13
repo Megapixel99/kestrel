@@ -11,9 +11,10 @@ it on WebKit.
 - **[RESULTS-ENGINE.md](RESULTS-ENGINE.md)** — what happened when the ladder was built on a
   real engine (WebKit), and which of the design's targets turned out to be unreachable from
   outside it.
-- **[kestrel/](kestrel/)** — the browser itself: ~7,900 lines of Swift, the tab ladder, the
-  scheduler, an ad blocker, dark mode, userscripts, screenshots with an annotation editor,
-  Bitwarden autofill, developer tools, and twelve headless test and diagnostic modes.
+- **[kestrel/](kestrel/)** — the browser itself: ~8,900 lines of Swift, the tab ladder, the
+  scheduler, **real Firefox add-ons**, an ad blocker, dark mode, userscripts, screenshots
+  with an annotation editor, Bitwarden autofill, developer tools, and sixteen headless test
+  and diagnostic modes.
 - **[DEBUGGING.md](DEBUGGING.md)** — the implementation bugs that looked correct while
   being broken, including two I could not fix and said so.
 - **[BENCHMARKS.md](BENCHMARKS.md)** — every comparison in one place, regenerated from
@@ -39,6 +40,14 @@ discarded background-tab images since v4, already has an mmap'd cross-process by
 (`ScriptPreloader`) that simply doesn't cover web content, and has shipped tab unloading since
 v93 — but pressure-triggered and two-state, which is exactly the baseline the scheduler
 benchmark beats. Only the budget-driven ladder is genuinely new.
+
+**Firefox add-ons run, and they are not free.** An `.xpi` is a WebExtension, and WebKit has
+shipped its own WebExtensions runtime since macOS 15.4 — so Kestrel loads add-ons rather
+than reimplementing them. All 25 installed in the development machine's Firefox profiles
+load. They also answer a question the browser comparison could not: the eight add-ons in the
+active profile add **244 MB** to a 50 MB browser. That is memory the ladder cannot touch,
+because a background page belongs to no tab — which retires the "Firefox had more
+extensions" confound by measuring it instead of naming it.
 
 Adding per-tab memory limits closed the last gap — a 512 MB cap with a 3 GB budget holds the
 bound 100% of the time with zero breakage — and reframed everything else: **items 1–4 are not
