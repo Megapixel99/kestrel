@@ -132,6 +132,9 @@ final class AddonsPopoverController: NSViewController {
 
     // MARK: - detail panes
 
+    /// Test hook: drive a detail pane without a click.
+    func openForTest(_ addon: Addon) { showDetail(addon) }
+
     private func showDetail(_ addon: Addon) {
         let h = Self.preferredHeight(rows: addons.count)
         contentView.frame = NSRect(x: 0, y: 0, width: Self.width, height: h)

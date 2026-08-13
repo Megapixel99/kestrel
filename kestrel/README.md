@@ -91,6 +91,7 @@ Every mode below is a real check, not a smoke test.
 | mode | what it does |
 |---|---|
 | `selftest` | ~40 assertions: blocklist, userscript parsing, dark mode, QR, tab switching, prefs, password generator, user agent, per-site exclusions |
+| `layouttest` | Builds every add-ons pane and both tab layouts at two window sizes, and fails on any control that escapes its parent or overlaps a sibling |
 | `probe` | Spawns *n* tabs, maps each to its WebContent process, drives one through the ladder and reports what each rung costs |
 | `bench <urls> <budgetMB> <policy> <events>` | Loads real sites and replays an access trace under `none` / `discardlru` / `kestrel` |
 | `shottest` | Full-page capture against a page with a sticky header, asserting it appears once rather than once per band |

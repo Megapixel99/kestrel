@@ -42,6 +42,8 @@ case "filters":
     FilterTest.run(path: args.count > 2 ? args[2] : nil)
 case "darktest":
     DarkTest.run()
+case "layouttest":
+    LayoutTest.run()
 case "selftest":
     SelfTest.run()
 case "gui":
