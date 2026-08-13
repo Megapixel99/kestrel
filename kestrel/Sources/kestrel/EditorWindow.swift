@@ -35,6 +35,10 @@ final class EditorWindowController: NSObject {
                           backing: .buffered, defer: false)
         super.init()
         window.title = "Edit screenshot — \(title)"
+        // The tool row is a fixed-width cascade — eleven buttons, eight swatches and a
+        // slider laid out left to right — so it has a real minimum. Declaring it stops the
+        // window being dragged narrower than its own contents.
+        window.contentMinSize = NSSize(width: 1100, height: 520)
 
         let root = NSView(frame: window.contentLayoutRect)
         root.autoresizingMask = [.width, .height]
@@ -45,7 +49,7 @@ final class EditorWindowController: NSObject {
         for (name, key, kind) in Self.tools {
             let b = NSButton(title: "\(name)  \(key.uppercased())", target: self,
                              action: #selector(pickTool(_:)))
-            b.frame = NSRect(x: x, y: H - 36, width: CGFloat(name.count) * 8 + 34, height: 26)
+            b.frame = NSRect(x: x, y: H - 36, width: CGFloat(name.count) * 7 + 26, height: 26)
             b.autoresizingMask = [.minYMargin]
             b.bezelStyle = .rounded
             b.font = .systemFont(ofSize: 11)

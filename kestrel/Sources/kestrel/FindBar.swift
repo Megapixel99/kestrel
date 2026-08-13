@@ -22,21 +22,31 @@ final class FindBar: NSView {
         field.action = #selector(findNext)
         addSubview(field)
 
-        countLabel.frame = NSRect(x: 278, y: 8, width: 120, height: 18)
-        countLabel.font = .systemFont(ofSize: 11)
-        countLabel.textColor = .secondaryLabelColor
-        addSubview(countLabel)
-
-        var x: CGFloat = 404
-        for (title, sel) in [("\u{2039}", #selector(findPrevious)),
+        // Anchored to the right edge rather than laid out from the left: the bar spans the
+        // whole window, so a fixed x put "Done" past the edge on any window narrower than
+        // 528 pt — which the browser's own minimum size allows.
+        var x = frame.width - 10
+        for (title, sel) in [("Done", #selector(close)),
                              ("\u{203A}", #selector(findNext)),
-                             ("Done", #selector(close))] {
+                             ("\u{2039}", #selector(findPrevious))] {
+            let w: CGFloat = title == "Done" ? 56 : 30
+            x -= w
             let b = NSButton(title: title, target: self, action: sel)
-            b.frame = NSRect(x: x, y: 4, width: title == "Done" ? 56 : 30, height: 24)
+            b.frame = NSRect(x: x, y: 4, width: w, height: 24)
+            b.autoresizingMask = [.minXMargin]
             b.bezelStyle = .rounded
             addSubview(b)
-            x += (title == "Done" ? 60 : 34)
+            x -= 4
         }
+
+        // The match count fills whatever is left between the field and the buttons, so it
+        // grows with the window instead of running under "‹" on a narrow one.
+        countLabel.frame = NSRect(x: 278, y: 8, width: max(0, x - 8 - 278), height: 18)
+        countLabel.autoresizingMask = [.width]
+        countLabel.font = .systemFont(ofSize: 11)
+        countLabel.textColor = .secondaryLabelColor
+        countLabel.lineBreakMode = .byTruncatingTail
+        addSubview(countLabel)
     }
     required init?(coder: NSCoder) { nil }
 

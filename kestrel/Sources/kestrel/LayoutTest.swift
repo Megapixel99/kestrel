@@ -58,6 +58,38 @@ enum LayoutTest {
             checked += 1
         }
 
+        // --- the auxiliary windows, which are laid out by hand at a fixed size ---
+        // The editor's tool row derives each button's width from its title length and
+        // cascades x across three groups, so a renamed tool moves everything after it.
+        let editor = EditorWindowController(image: NSImage(size: NSSize(width: 800, height: 600)),
+                                            url: URL(string: "https://example.com"),
+                                            title: "layout test", browser: nil)
+        defer { editor.window.close() }
+        for width in [CGFloat(1180), editor.window.contentMinSize.width] {
+            editor.window.setContentSize(NSSize(width: width, height: 800))
+            editor.window.layoutIfNeeded()
+            if let root = editor.window.contentView {
+                problems += audit(root, context: "screenshot editor @\(Int(width))",
+                                  recurse: false)
+            }
+            checked += 1
+        }
+
+        let scripts = ScriptManagerController(browser: nil)
+        defer { scripts.window.close() }
+        if let root = scripts.window.contentView {
+            problems += audit(root, context: "userscript dashboard", recurse: true)
+        }
+        checked += 1
+
+        // The find bar spans the web container, which is narrowest at the minimum window
+        // size with the vertical tab sidebar showing: 900 - 260. 520 is tighter still.
+        for width in [CGFloat(640), 520] {
+            let find = FindBar(frame: NSRect(x: 0, y: 0, width: width, height: 34))
+            problems += audit(find, context: "find bar @\(Int(width))", recurse: false)
+            checked += 1
+        }
+
         print("Layout check — \(checked) layouts\n")
         if problems.isEmpty {
             print("  no overflowing or overlapping controls found")
