@@ -1,11 +1,12 @@
 import AppKit
 
-/// The add-ons popover: a list of Kestrel's built-in "extensions", each opening its own
-/// detail pane — the shape Chrome, Brave and Firefox all converged on.
+/// The add-ons popover: a list of features, each opening its own detail pane — the shape
+/// Chrome, Brave and Firefox all converged on.
 ///
-/// These are not real extensions and the UI should not pretend otherwise: there is no
-/// extension runtime here, no store, and nothing to install. They are the browser's own
-/// features presented in the place people look for them.
+/// Two different things share this list, and the UI should not blur them. The first six
+/// are Kestrel's own features, built in; there is nothing to install and no store. The
+/// last one is the real WebExtensions runtime, where an actual Firefox `.xpi` installs
+/// and runs. The footer says which is which.
 final class AddonsPopoverController: NSViewController {
 
     struct Addon {
@@ -129,9 +130,16 @@ final class AddonsPopoverController: NSViewController {
         sep.boxType = .separator
         v.addSubview(sep)
 
+        // Says what the list actually contains, which changed the day real add-ons
+        // started running: built-in features above, the WebExtensions runtime at the
+        // bottom. Naming the split is the point — "add-ons" alone would imply the first
+        // six are installable, and they are not.
         let note = NSTextField(wrappingLabelWithString:
-            "Kestrel's own features, not installable extensions — there is no extension "
-            + "runtime here.")
+            ExtensionStore.isSupportedOS
+                ? "Kestrel's own features, built in. Firefox add-ons install and run "
+                  + "under the last one."
+                : "Kestrel's own features, built in. Installing Firefox add-ons needs "
+                  + "macOS 15.4.")
         note.frame = NSRect(x: 14, y: 8, width: v.bounds.width - 28, height: 32)
         note.alignment = .center
         note.font = .systemFont(ofSize: 9.5)
