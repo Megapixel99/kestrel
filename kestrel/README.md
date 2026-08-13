@@ -89,7 +89,14 @@ unpacks the add-on and hands it to WebKit.
 ```
 
 All 25 add-ons installed in the Firefox profiles on the development machine load, uBlock
-Origin, NoScript and Greasemonkey among them. What does *not* survive is the Gecko-only
+Origin, NoScript and Greasemonkey among them.
+
+**Ad blockers are the exception, and it is measured rather than assumed.** WebKit grants
+`webRequestBlocking` and does not honour it: a test add-on returning `{cancel: true}` from a
+blocking listener does not stop the request. `declarativeNetRequest` is the only blocking
+mechanism the runtime implements, so a Manifest V2 blocker — Adblock Plus, uBlock Origin 1.x
+— loads, runs, and blocks nothing. Use an MV3 blocker, and check `content rules: true` in
+`extdiag`. The permission dialog warns before you enable one that cannot work. What does *not* survive is the Gecko-only
 surface — sidebars, themes, container tabs, the `downloads`/`history`/`privacy` APIs — so
 each add-on is checked against that list and told to you **before** you enable it, along
 with the permissions it wants. Nothing is granted without that dialog.

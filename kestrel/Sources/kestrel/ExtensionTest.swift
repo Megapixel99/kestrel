@@ -215,6 +215,31 @@ enum ExtensionTest {
         check("runtime.connect ports work", portState == "acked",
               portState ?? "no reply over the port")
 
+        // Does a blocking webRequest listener actually block? Adblock Plus, uBlock Origin
+        // and every other MV2 blocker depends on this; declarativeNetRequest is the only
+        // blocking mechanism WebKit is documented to support.
+        var blocked: String?
+        wait(seconds: 6) { done in
+            wv.evaluateJavaScript("""
+            (function () {
+              window.__blockResult = 'pending';
+              fetch('https://example.com/kestrel-should-block.js')
+                .then(function () { window.__blockResult = 'request went through'; })
+                .catch(function () { window.__blockResult = 'blocked'; });
+              return 'started';
+            })()
+            """) { _, _ in done() }
+        }
+        wait(seconds: 15) { done in
+            poll(wv, every: 0.5, until: 12,
+                 script: "window.__blockResult === 'pending' ? '' : window.__blockResult") { v in
+                blocked = v; done()
+            }
+        }
+        // Reported either way rather than asserted: this is the engine's answer, and the
+        // point is to record it, not to fail a build over it.
+        print("  NOTE  blocking webRequest: \(blocked ?? "no answer")")
+
         // The popup: WebKit rendering the add-on's own HTML. This had no coverage at all
         // because it looks like it needs a click — but the action hands over its web view,
         // and a popup that renders blank or collapses to nothing is exactly what a headless
@@ -310,7 +335,7 @@ enum ExtensionTest {
       "name": "Kestrel Test Add-on",
       "version": "1.0",
       "description": "Injects a marker element and pings its background script.",
-      "permissions": ["storage", "tabs", "<all_urls>"],
+      "permissions": ["storage", "tabs", "webRequest", "webRequestBlocking", "<all_urls>"],
       "background": { "scripts": ["background.js"], "persistent": false },
       "content_scripts": [
         { "matches": ["<all_urls>"], "js": ["content.js"], "run_at": "document_end" }
@@ -373,6 +398,19 @@ enum ExtensionTest {
     private static let background = """
     (function () {
       var api = typeof browser !== 'undefined' ? browser : chrome;
+      // Blocking webRequest, which is how every MV2 ad blocker actually blocks. A
+      // granted permission string is not an implemented API, so this asks the engine.
+      try {
+        api.webRequest.onBeforeRequest.addListener(
+          function (details) {
+            if (details.url.indexOf('kestrel-should-block') !== -1) return { cancel: true };
+            return {};
+          },
+          { urls: ['<all_urls>'] },
+          ['blocking']
+        );
+      } catch (e) {}
+
       // Long-lived ports. Dark Reader's Firefox build wires its UI to the background
       // with runtime.onConnect rather than one-shot messages.
       api.runtime.onConnect.addListener(function (port) {

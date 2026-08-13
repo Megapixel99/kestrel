@@ -146,6 +146,12 @@ enum ExtensionStore {
         ("devtools_page",              "devtools panel"),
     ]
     private static let unsupportedPermissions: [(String, String)] = [
+        // Measured, not assumed: a test add-on returning {cancel:true} from a blocking
+        // onBeforeRequest listener does not stop the request. WebKit grants the
+        // permission string and does not honour the cancellation, so every Manifest V2
+        // ad blocker — Adblock Plus, uBlock Origin 1.x — cannot block here. Only
+        // declarativeNetRequest blocks.
+        ("webRequestBlocking", "request blocking (MV2 blockers cannot block here)"),
         ("contextualIdentities", "container tabs"),
         ("browsingData",         "browsingData API"),
         ("downloads",            "downloads API"),
