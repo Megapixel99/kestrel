@@ -52,7 +52,13 @@ enum ExtensionTest {
         do { installed = try ExtensionStore.install(from: xpi) }
         catch { check("installed the .xpi", false, error.localizedDescription) }
         guard let ext = installed else { finish(failures + 1) }
-        defer { ExtensionStore.remove(ext) }
+        // Not `defer`: finish() calls exit(), which does not run deferred blocks, so the
+        // first version of this test left its add-on installed in ~/.kestrel/extensions
+        // and it showed up in the real UI.
+        func finishAndClean(_ n: Int) -> Never {
+            ExtensionStore.remove(ext)
+            finish(n)
+        }
 
         check("unpacked and read the manifest", ext.name == "Kestrel Test Add-on",
               "name = \(ext.name)")
@@ -73,8 +79,9 @@ enum ExtensionTest {
             runtime.load(ext) { err in loadError = err; done() }
         }
         check("WebKit loaded the extension", loadError == nil, loadError ?? "")
-        guard loadError == nil, let ctx = runtime.contexts[ext.id] else { finish(failures + 1) }
-        defer { runtime.unload(ext.id) }
+        guard loadError == nil, let ctx = runtime.contexts[ext.id] else {
+            finishAndClean(failures + 1)
+        }
 
         check("granted the declared permissions", ctx.hasAccessToAllHosts)
         check("extension declares injected content", ctx.hasInjectedContent)
@@ -88,7 +95,8 @@ enum ExtensionTest {
         runtime.browser = browser
         browser.openTab(url: URL(string: "https://example.com/")!)
         guard let tab = browser.currentTab, let wv = tab.webView else {
-            check("opened a tab for the extension to see", false); finish(failures + 1)
+            check("opened a tab for the extension to see", false)
+            finishAndClean(failures + 1)
         }
         ctx.didOpenWindow(browser)
         ctx.didFocusWindow(browser)
@@ -123,7 +131,8 @@ enum ExtensionTest {
         check("the background script replied to it", reply == "pong",
               reply.map { $0.isEmpty ? "no reply" : $0 } ?? "no reply")
 
-        finish(failures)
+        runtime.unload(ext.id)
+        finishAndClean(failures)
     }
 
     // MARK: - the add-on under test
