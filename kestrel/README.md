@@ -37,6 +37,12 @@ width for a per-tab readout of state, memory and last restore latency.
 memory bar segmented by tab state with the budget drawn across it, and a status line that
 says explicitly when the budget is *unreachable* rather than silently sitting over it.
 
+**The address bar suggests** as you type, from bookmarks and history ranked by visits over
+age. **Import** bookmarks and history from Firefox, Chrome or Safari (hamburger → Import
+From). **Protections** (wrench) reports what is guarding the page and, more usefully, *who*
+is responsible for each item — WebKit's tracking prevention, Kestrel's own doing, or an
+installed add-on — and can clear a site's stored data.
+
 **Session restore** keeps scroll position and unsent form contents, not just URLs —
 `interactionState` carries neither for a parked tab — writes every ten seconds rather than
 only at quit, and tells a crash from a clean exit by a flag file. Password fields are never

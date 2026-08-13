@@ -46,6 +46,7 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
     var recentlyClosed: [(url: URL, title: String, image: Data?)] = []
     var spinnerTimer: Timer?
     var networkWindow: NetworkWindowController?
+    let suggestions = SuggestionList()
     /// Session writes are cheap but not free; this throttles them to roughly every 10 s
     /// of ticks, plus the explicit saves on close and quit.
     private var ticksSinceSave = 0
@@ -419,6 +420,8 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
         add("Reset Camera/Mic Permissions", #selector(resetMediaPermissions),
             enabled: !Prefs.mediaDecisions.isEmpty)
         add("Page Source", #selector(viewSource), "u", [.command])
+        menu.addItem(.separator())
+        add("Protections…", #selector(showProtections))
         popUp(menu, from: sender)
     }
 
@@ -593,6 +596,19 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
         add("Vertical Tabs", #selector(toggleVerticalTabs),
             state: Prefs.verticalTabs ? .on : .off)
         add("Memory…", #selector(openMemoryPage))
+
+        let importItem = NSMenuItem(title: "Import From…", action: nil, keyEquivalent: "")
+        let importMenu = NSMenu()
+        for (i, src) in Migration.sources.enumerated() {
+            let item = NSMenuItem(title: src.name, action: #selector(importFrom(_:)),
+                                  keyEquivalent: "")
+            item.target = self
+            item.tag = i
+            item.isEnabled = src.available()
+            importMenu.addItem(item)
+        }
+        importItem.submenu = importMenu
+        menu.addItem(importItem)
         add("Task Manager…", #selector(openTaskManager))
         menu.addItem(.separator())
         add("Quit Kestrel", #selector(NSApplication.terminate(_:)))
@@ -739,7 +755,28 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
     }
 
     func controlTextDidBeginEditing(_ obj: Notification) { urlBar.noteFocusChanged() }
-    func controlTextDidEndEditing(_ obj: Notification) { urlBar.noteFocusChanged() }
+
+    func controlTextDidEndEditing(_ obj: Notification) {
+        urlBar.noteFocusChanged()
+        suggestions.hide()
+    }
+
+    /// History and bookmarks under the address bar as you type.
+    func controlTextDidChange(_ obj: Notification) {
+        guard (obj.object as? NSTextField) === urlBar.field else { return }
+        suggestions.onChoose = { [weak self] choice in
+            guard let self else { return }
+            self.urlBar.field.stringValue = choice
+            self.navigate()
+        }
+        suggestions.update(query: urlBar.field.stringValue, under: urlBar)
+    }
+
+    /// Arrow keys belong to the list while it is open; everything else is the field's.
+    func control(_ control: NSControl, textView: NSTextView,
+                 doCommandBy selector: Selector) -> Bool {
+        suggestions.handle(selector)
+    }
 
 
     // MARK: - tabs
@@ -880,6 +917,50 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
             openTab(url: AboutMemory.sentinel)
         }
         refreshMemoryPages()
+    }
+
+    /// Bookmarks and history from another browser on this Mac. Read-only, and it says
+    /// what it took rather than importing silently.
+    @objc func importFrom(_ sender: NSMenuItem) {
+        let sources = Migration.sources
+        guard sources.indices.contains(sender.tag) else { return }
+        let source = sources[sender.tag]
+        flash("reading \(source.name)…")
+        DispatchQueue.global(qos: .userInitiated).async {
+            let added = Migration.importFrom(source)
+            DispatchQueue.main.async { [weak self] in
+                if added.bookmarks == 0 && added.history == 0 {
+                    self?.flash("nothing new from \(source.name) — "
+                                + "already imported, or its files are not readable")
+                } else {
+                    self?.flash("imported \(added.bookmarks) bookmark(s) and "
+                                + "\(added.history) history entr(ies) from \(source.name)")
+                }
+            }
+        }
+    }
+
+    /// What is protecting this page, and who is responsible for each item.
+    @objc func showProtections() {
+        let host = currentTab?.url.host ?? ""
+        let items = Protections.items(for: currentTab)
+        let body = items.map { item -> String in
+            let mark = item.state == .on ? "\u{2713}" : item.state == .off ? "\u{2717}" : "?"
+            return "\(mark)  \(item.title)  [\(item.owner.rawValue)]\n     \(item.detail)"
+        }.joined(separator: "\n\n")
+
+        Protections.siteData(for: host) { [weak self] storage in
+            let alert = NSAlert()
+            alert.messageText = host.isEmpty ? "Protections" : "Protections — \(host)"
+            alert.informativeText = body + (storage.isEmpty ? "" : "\n\n" + storage)
+            alert.addButton(withTitle: "Done")
+            if !host.isEmpty { alert.addButton(withTitle: "Clear Site Data") }
+            if alert.runModal() == .alertSecondButtonReturn, !host.isEmpty {
+                Protections.clearSiteData(for: host) {
+                    self?.flash("cleared stored data for \(host)")
+                }
+            }
+        }
     }
 
     @objc func openNetworkPanel() {

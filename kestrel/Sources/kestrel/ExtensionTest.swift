@@ -249,6 +249,30 @@ enum ExtensionTest {
             check("the add-on has a toolbar action", false)
         }
 
+        // A popup wider than the space to the right of its button used to hang off the
+        // side of the window: AppKit constrains a popover to the screen, not to the window.
+        if let action = ctx.action(for: tab), let pop = action.popupPopover {
+            pop.contentSize = NSSize(width: 380, height: 420)
+            browser.window.setContentSize(NSSize(width: 1000, height: 700))
+            browser.window.layoutIfNeeded()
+            browser.refreshExtensionButtons()
+
+            if let button = browser.extensionBar.subviews.first {
+                let rect = runtime.anchorRect(for: pop, in: button)
+                // Where the popover will centre itself, in window coordinates.
+                let centre = button.convert(NSPoint(x: rect.midX, y: 0), to: nil).x
+                let left = centre - pop.contentSize.width / 2
+                let right = centre + pop.contentSize.width / 2
+                let content = browser.window.contentLayoutRect
+                check("a wide popup is kept inside the window",
+                      left >= content.minX - 1 && right <= content.maxX + 1,
+                      "popup spans \(Int(left))…\(Int(right)) in a window "
+                      + "\(Int(content.minX))…\(Int(content.maxX))")
+            } else {
+                check("the add-on has a toolbar button to anchor to", false)
+            }
+        }
+
         // The options page lives at webkit-extension://…, which only loads in a web view
         // built from the extension's own configuration — WebKit cancels the navigation in
         // any other. A plain tab showed nothing at all, with no error.

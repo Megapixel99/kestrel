@@ -314,7 +314,36 @@ final class ExtensionRuntime: NSObject, WKWebExtensionControllerDelegate {
         guard let pop = action.popupPopover else { return }
         popover = pop
         pop.behavior = .transient
-        pop.show(relativeTo: view.bounds, of: view, preferredEdge: .maxY)
+        pop.show(relativeTo: anchorRect(for: pop, in: view), of: view, preferredEdge: .maxY)
+    }
+
+    /// Keeps a popup inside the browser window.
+    ///
+    /// AppKit constrains a popover to the *screen*, not to the window it belongs to, and
+    /// add-on popups are wide — Bitwarden's is 380 pt — while their buttons sit at the far
+    /// right of the toolbar. On a window narrower than the screen the result is a panel
+    /// hanging off the side of the browser, over whatever is behind it.
+    ///
+    /// A popover centres itself on the rect it is given, so shifting that rect is enough:
+    /// clamp the centre so the whole popup lands inside the window, and let the arrow do
+    /// what it likes.
+    func anchorRect(for pop: NSPopover, in view: NSView) -> NSRect {
+        guard let window = view.window else { return view.bounds }
+        let width = max(pop.contentSize.width, 320)
+        let margin: CGFloat = 8
+        let content = window.contentLayoutRect
+
+        let centreInWindow = view.convert(NSPoint(x: view.bounds.midX, y: 0), to: nil).x
+        let lowest = content.minX + width / 2 + margin
+        let highest = content.maxX - width / 2 - margin
+        // A popup wider than the window cannot be contained; centring it is the least bad
+        // answer, and clamping in that order would otherwise invert the bounds.
+        let clamped = lowest > highest ? content.midX
+                                       : min(max(centreInWindow, lowest), highest)
+
+        let dx = clamped - centreInWindow
+        return NSRect(x: view.bounds.midX + dx, y: view.bounds.minY, width: 0,
+                      height: view.bounds.height)
     }
 
     // MARK: - WKWebExtensionControllerDelegate
