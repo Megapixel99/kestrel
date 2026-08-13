@@ -11,6 +11,8 @@ have open — plus benchmarks that test the first four items of its roadmap.
   real engine (WebKit), and which of the design's targets turned out to be unreachable from
   outside it.
 - **[kestrel/](kestrel/)** — a working macOS browser implementing the ladder and the budget.
+- **[DEBUGGING.md](DEBUGGING.md)** — the implementation bugs that looked correct while
+  being broken, including two I could not fix and said so.
 
 **Short version:** in simulation the thesis looked strong — 8.9× less memory on a realistic tab
 distribution, with almost all of the win from one item (the tab scheduler), one item overrated
