@@ -1,7 +1,8 @@
 # Kestrel
 
-A design for a browser whose memory scales with what you're looking at rather than what you
-have open — plus benchmarks that test the first four items of its roadmap.
+A browser whose memory scales with what you're looking at rather than what you have open:
+a design, a measurement harness that tests it, and a working macOS browser that implements
+it on WebKit.
 
 - **[DESIGN.md](DESIGN.md)** — the architecture. Annotated with measured results where the
   data contradicted the original claims.
@@ -10,7 +11,9 @@ have open — plus benchmarks that test the first four items of its roadmap.
 - **[RESULTS-ENGINE.md](RESULTS-ENGINE.md)** — what happened when the ladder was built on a
   real engine (WebKit), and which of the design's targets turned out to be unreachable from
   outside it.
-- **[kestrel/](kestrel/)** — a working macOS browser implementing the ladder and the budget.
+- **[kestrel/](kestrel/)** — the browser itself: ~7,900 lines of Swift, the tab ladder, the
+  scheduler, an ad blocker, dark mode, userscripts, screenshots with an annotation editor,
+  Bitwarden autofill, developer tools, and twelve headless test and diagnostic modes.
 - **[DEBUGGING.md](DEBUGGING.md)** — the implementation bugs that looked correct while
   being broken, including two I could not fix and said so.
 
@@ -113,8 +116,22 @@ bench/b2_image_cache/         decode_vs_hold.py
 bench/b3_bytecode_cache/      gen_cache.js, child.py, run.py
 bench/b4_scheduler/           scheduler.py  <- the policy implementation
                               evaluate.py   <- trace generation and comparison
-results/                      raw JSON output + sampled Chrome renderer RSS
+results/                      raw JSON output + five sampled browser RSS distributions
+results/engine/               real-engine benchmark runs
+DEBUGGING.md                  implementation bugs, including two never fixed
 ```
+
+## Reproducing everything
+
+```bash
+cd bench/b1_jit_tierdown && python3 run.py          # and the other three benches
+cd kestrel && ./make_app.sh && open Kestrel.app --args gui
+cd kestrel && ./.build/debug/kestrel selftest       # ~40 assertions
+cd kestrel && ./run_bench.sh 800 40 urls_heavy.txt  # the real-engine comparison
+```
+
+`node_modules/` and `.build/` are not tracked; `npm install` and `swift build` restore
+them. Dark Reader is optional — the browser falls back to a CSS invert without it.
 
 `bench/b4_scheduler/scheduler.py` is the one file here that is a proposed *implementation*
 rather than a measurement: the four-state ladder, the scoring rule, the per-reason demotion
