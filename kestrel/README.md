@@ -4,7 +4,8 @@ A macOS browser built on WebKit (`WKWebView`) that implements the four-state tab
 from [../DESIGN.md](../DESIGN.md) and enforces a user-settable global memory budget.
 
 What building it actually proved is in [../RESULTS-ENGINE.md](../RESULTS-ENGINE.md); the
-bugs that looked correct while being broken are in [../DEBUGGING.md](../DEBUGGING.md).
+bugs that looked correct while being broken are in [../DEBUGGING.md](../DEBUGGING.md), and
+what is still broken is in [../BROKEN.md](../BROKEN.md).
 
 ## Building and running
 

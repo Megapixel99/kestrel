@@ -18,6 +18,9 @@ it on WebKit.
   WebKit's extension runtime made the real add-ons work, the imitations were deleted.
 - **[DEBUGGING.md](DEBUGGING.md)** — the implementation bugs that looked correct while
   being broken, including two I could not fix and said so.
+- **[BROKEN.md](BROKEN.md)** — what is still broken, what has already been ruled out for
+  each, and where to start. Written so picking one up does not mean repeating the
+  elimination work.
 - **[BENCHMARKS.md](BENCHMARKS.md)** — every comparison in one place, regenerated from
   the data by `bench/compare.py` rather than transcribed.
 
