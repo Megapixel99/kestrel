@@ -199,5 +199,6 @@ Sources/kestrel/
   Extensions.swift       .xpi install, the WKWebExtension runtime, permissions
   ExtensionBridge.swift  Kestrel's tabs and window, described to that runtime
   ExtensionToolbar.swift add-on buttons, popups, the permission dialog
+  ExtensionWeb.swift     installing from addons.mozilla.org
   *Test.swift, Diag/AB   the headless checks and diagnostics above
 ```

@@ -1273,6 +1273,37 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
         flash("\(host): \(what) \(allow ? "allowed" : "blocked")")
     }
 
+    /// Catches links to add-ons before WebKit tries to render one, and gives AMO the
+    /// user agent it insists on.
+    func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
+                 decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        let url = action.request.url
+        // Only AMO sees a Firefox UA, and only while it is the page being loaded. It
+        // gates its install button on the UA and otherwise offers to install Firefox.
+        if action.targetFrame?.isMainFrame ?? true {
+            webView.customUserAgent = ExtensionWeb.isAddonSite(url)
+                ? ExtensionWeb.firefoxUserAgent : nil
+        }
+        if let url, ExtensionWeb.isExtensionArchive(url) {
+            decisionHandler(.cancel)
+            downloadAndInstallExtension(from: url)
+            return
+        }
+        decisionHandler(.allow)
+    }
+
+    /// The URL is not always the tell — AMO serves add-ons from paths without a `.xpi`
+    /// suffix — so the response MIME type gets the same treatment.
+    func webView(_ webView: WKWebView, decidePolicyFor response: WKNavigationResponse,
+                 decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
+        if ExtensionWeb.isExtensionMIME(response.response), let url = response.response.url {
+            decisionHandler(.cancel)
+            downloadAndInstallExtension(from: url)
+            return
+        }
+        decisionHandler(.allow)
+    }
+
     /// WKWebView returns nil for window.open by default, which silently breaks links
     /// that use it. Route them into a tab instead.
     func webView(_ webView: WKWebView, createWebViewWith config: WKWebViewConfiguration,
@@ -1445,7 +1476,7 @@ enum BrowserApp {
         NSApplication.shared.mainMenu = main
     }
 
-    static func run() {
+    static func run(startURL: URL? = nil) {
         let controller = BrowserWindowController()
         installMenu(target: controller)
         // Compile the blocklist once; WebKit caches the compiled rules in its own store.
@@ -1460,7 +1491,9 @@ enum BrowserApp {
                     controller.customBlocklistReady(note)
                 }
             }
-            if controller.tabs.isEmpty && !controller.restoreSession() {
+            if let startURL {
+                controller.openTab(url: startURL)
+            } else if controller.tabs.isEmpty && !controller.restoreSession() {
                 controller.openTab(url: NewTabPage.url())
             }
             // After the first tab exists: an extension asking `tabs.query` during load

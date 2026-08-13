@@ -60,7 +60,9 @@ case "layouttest":
 case "selftest":
     SelfTest.run()
 case "gui":
-    BrowserApp.run()
+    // `gui <url>` opens straight to a page, which is how the add-on site
+    // gets tested without retyping it on every relaunch.
+    BrowserApp.run(startURL: args.count > 2 ? NewTabPage.resolve(args[2]) : nil)
 default:
     FileHandle.standardError.write("unknown mode \(mode)\n".data(using: .utf8)!)
     exit(2)

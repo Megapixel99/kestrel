@@ -157,7 +157,10 @@ final class Tab: NSObject {
             // Extensions attach per configuration, so a tab restored from COLD comes
             // back with the same add-ons the rest of the window has.
             if #available(macOS 15.4, *) {
-                MainActor.assumeIsolated { ExtensionRuntime.apply(to: cfg) }
+                MainActor.assumeIsolated {
+                    ExtensionRuntime.apply(to: cfg)
+                    ExtensionWeb.attach(to: cfg)
+                }
             }
             for script in UserScriptStore.loadAll()
             where Prefs.isScriptEnabled(script.name) {
