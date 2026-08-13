@@ -162,6 +162,47 @@ enum ExtensionTest {
               tabsAfter?.contains("example.org") == true,
               tabsAfter ?? "never appeared")
 
+        // What a content script's `sender` carries. Add-ons key their per-tab state on
+        // it — Dark Reader's canAccessTab() is literally `Boolean(tabs[tab.id])`,
+        // populated only from sender.tab.id — so a missing field disables the add-on
+        // with a message about the page being protected.
+        var senderInfo: String?
+        wait(seconds: 12) { done in
+            poll(wv, every: 0.5, until: 11,
+                 script: "document.getElementById('kestrel-test')?.dataset.sender ?? ''") { v in
+                senderInfo = v; done()
+            }
+        }
+        check("the background sees which tab a message came from",
+              senderInfo?.contains("tab=true") == true, senderInfo ?? "no sender info")
+        check("...including the tab's URL",
+              senderInfo?.contains("url=https://example.com") == true, senderInfo ?? "")
+        check("...and a frame id",
+              senderInfo?.contains("frame=none") == false, senderInfo ?? "")
+
+        // The direction that actually delivers work. A content script that can talk to
+        // its background but cannot be talked *to* looks exactly like Dark Reader here:
+        // injected, permitted, and doing nothing to the page.
+        var pushed: String?
+        wait(seconds: 12) { done in
+            poll(wv, every: 0.5, until: 11,
+                 script: "document.getElementById('kestrel-test')?.dataset.push ?? ''") { v in
+                pushed = v; done()
+            }
+        }
+        check("the background can message the content script back",
+              pushed == "received", pushed ?? "tabs.sendMessage never arrived")
+
+        var portState: String?
+        wait(seconds: 12) { done in
+            poll(wv, every: 0.5, until: 11,
+                 script: "document.getElementById('kestrel-test')?.dataset.port ?? ''") { v in
+                portState = v; done()
+            }
+        }
+        check("runtime.connect ports work", portState == "acked",
+              portState ?? "no reply over the port")
+
         // The options page lives at webkit-extension://…, which only loads in a web view
         // built from the extension's own configuration — WebKit cancels the navigation in
         // any other. A plain tab showed nothing at all, with no error.
@@ -213,6 +254,12 @@ enum ExtensionTest {
     (function () {
       var api = typeof browser !== 'undefined' ? browser : chrome;
       var el = document.createElement('div');
+      api.runtime.onMessage.addListener(function (m) {
+        if (m && m.fromBackground) {
+          var n = document.getElementById('kestrel-test');
+          if (n) n.dataset.push = 'received';
+        }
+      });
       el.id = 'kestrel-test';
       el.textContent = 'kestrel-content-script-ran';
       el.style.display = 'none';
@@ -226,6 +273,25 @@ enum ExtensionTest {
         api.runtime.sendMessage({ tabs: true }, function (r) {
           if (r) el.dataset.tabs = String(r.count) + '|' + r.urls;
         });
+        api.runtime.sendMessage({ pushToTab: true }, function () {});
+      try {
+        var port = api.runtime.connect({ name: 'kestrel-port' });
+        port.onMessage.addListener(function (m) {
+          if (m && m.ack) {
+            var n = document.getElementById('kestrel-test');
+            if (n) n.dataset.port = 'acked';
+          }
+        });
+        port.postMessage({ hello: true });
+      } catch (e) {
+        var n0 = document.getElementById('kestrel-test');
+        if (n0) n0.dataset.port = 'threw: ' + e;
+      }
+        api.runtime.sendMessage({ sender: true }, function (r) {
+          if (r) el.dataset.sender = 'tab=' + r.hasTab + ' id=' + r.tabId
+                                   + ' url=' + r.tabURL + ' frame=' + r.frameId
+                                   + ' doc=' + r.docId;
+        });
       }, 500);
     })();
     """
@@ -233,8 +299,36 @@ enum ExtensionTest {
     private static let background = """
     (function () {
       var api = typeof browser !== 'undefined' ? browser : chrome;
+      // Long-lived ports. Dark Reader's Firefox build wires its UI to the background
+      // with runtime.onConnect rather than one-shot messages.
+      api.runtime.onConnect.addListener(function (port) {
+        port.onMessage.addListener(function (m) {
+          if (m && m.hello) port.postMessage({ ack: true });
+        });
+      });
       api.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
+        // Background -> content script. Dark Reader delivers its theme this way: the
+        // content script announces itself, the background answers with tabs.sendMessage.
+        if (msg && msg.pushToTab && sender && sender.tab) {
+          api.tabs.sendMessage(sender.tab.id, { fromBackground: true });
+          sendResponse({ sent: true });
+          return true;
+        }
         if (msg && msg.ping) { sendResponse({ pong: true }); return true; }
+        if (msg && msg.sender) {
+          // Dark Reader's TabManager.addFrame() keys its per-tab state on
+          // sender.tab.id / frameId / documentId. Without them canAccessTab() is
+          // false for every tab and the popup says the page is protected.
+          sendResponse({
+            hasTab: !!(sender && sender.tab),
+            tabId: sender && sender.tab ? sender.tab.id : 'none',
+            tabURL: sender && sender.tab ? (sender.tab.url || 'no-url') : 'none',
+            frameId: (sender && sender.frameId !== undefined) ? sender.frameId : 'none',
+            docId: (sender && sender.documentId) ? 'yes' : 'none',
+            url: (sender && sender.url) || 'none'
+          });
+          return true;
+        }
         if (msg && msg.tabs) {
           api.tabs.query({}, function (tabs) {
             sendResponse({ count: tabs.length,

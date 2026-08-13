@@ -120,6 +120,16 @@ enum ExtensionDiag {
                 print("UA inside the add-on: \(ua ?? "no answer")")
             }
 
+            // Parse-time errors live on the extension, runtime errors on the context.
+            // Printing only the latter hid the reason an add-on was half-loaded.
+            let parse = ctx.webExtension.errors
+            if parse.isEmpty {
+                print("manifest errors: none")
+            } else {
+                print("manifest errors:")
+                for e in parse.prefix(8) { print("  - \(e.localizedDescription)") }
+            }
+
             if ctx.errors.isEmpty {
                 print("runtime errors: none")
             } else {
