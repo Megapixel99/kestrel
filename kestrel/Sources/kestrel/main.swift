@@ -41,6 +41,8 @@ case "layouttest":
         LayoutTest.dumpDark = args.contains("dark")
     }
     LayoutTest.run()
+case "sessiontest":
+    SessionTest.run()
 case "selftest":
     SelfTest.run()
 case "gui":

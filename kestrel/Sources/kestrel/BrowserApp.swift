@@ -45,6 +45,10 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
     var findBar: FindBar?
     var recentlyClosed: [(url: URL, title: String, image: Data?)] = []
     var spinnerTimer: Timer?
+    var networkWindow: NetworkWindowController?
+    /// Session writes are cheap but not free; this throttles them to roughly every 10 s
+    /// of ticks, plus the explicit saves on close and quit.
+    private var ticksSinceSave = 0
 
     override init() {
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1500, height: 950),
@@ -394,6 +398,8 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
         add("Web Inspector", #selector(openInspector), "i", [.command, .option])
         add("Task Manager", #selector(openTaskManager), "\u{1b}", [.shift])
         add("Browser Console", #selector(openConsole), "j", [.command, .shift])
+        add("Network", #selector(openNetworkPanel), "e", [.command, .option])
+        add("Memory (about:memory)", #selector(openMemoryPage))
         menu.addItem(.separator())
 
         let responsive = NSMenuItem(title: "Responsive Design Mode", action: nil,
@@ -586,6 +592,7 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
         menu.addItem(.separator())
         add("Vertical Tabs", #selector(toggleVerticalTabs),
             state: Prefs.verticalTabs ? .on : .off)
+        add("Memory…", #selector(openMemoryPage))
         add("Task Manager…", #selector(openTaskManager))
         menu.addItem(.separator())
         add("Quit Kestrel", #selector(NSApplication.terminate(_:)))
@@ -683,13 +690,26 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
         flash("reopened \(closed.title)")
     }
 
+    /// The page reports scroll, form contents and network activity through these.
+    /// Registered once per web view; adding the same name twice traps.
+    func attachPageHandlers(to tab: Tab) {
+        guard let wv = tab.webView, !tab.handlersAttached else { return }
+        tab.handlersAttached = true
+        let ucc = wv.configuration.userContentController
+        ucc.add(PageMessageHandler(browser: self, tab: tab), name: SessionStore.messageName)
+        ucc.add(PageMessageHandler(browser: self, tab: tab), name: NetworkMonitor.messageName)
+    }
+
     func saveSession() {
         Store.saveSession(tabs.compactMap { tab in
             guard !NewTabPage.isNewTab(tab.url) else { return nil }
             return Store.SessionTab(url: tab.url.absoluteString, title: tab.title,
                                     interactionState: tab.sessionImage
                                         ?? (tab.webView?.interactionState as? Data),
-                                    pinned: tab.pinned)
+                                    pinned: tab.pinned,
+                                    scrollX: tab.pageState.scrollX,
+                                    scrollY: tab.pageState.scrollY,
+                                    formValues: tab.pageState.values)
         })
         Store.flush()
     }
@@ -702,6 +722,9 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
             let tab = Tab(id: nextId, url: url, title: st.title)
             tab.sessionImage = st.interactionState
             tab.pinned = st.pinned
+            tab.pageState = SessionStore.PageState(scrollX: st.scrollX, scrollY: st.scrollY,
+                                                   values: st.formValues)
+            tab.hasUnsubmittedInput = tab.pageState.hasInput
             nextId += 1
             tabs.append(tab)
         }
@@ -709,7 +732,9 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
         // cost 20 live pages. They load when selected.
         if let first = tabs.first { select(first) }
         refreshTabStrip()
-        flash("restored \(saved.count) tab(s) — they load when you open them")
+        let withState = saved.filter { !$0.formValues.isEmpty }.count
+        flash("restored \(saved.count) tab(s) — they load when you open them"
+              + (withState > 0 ? ", \(withState) with unsent form input" : ""))
         return true
     }
 
@@ -775,11 +800,13 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
         tab.ensureAttached(to: webContainer)                // ...which is why this is separate
         tab.webView?.navigationDelegate = self
         tab.webView?.uiDelegate = self
+        attachPageHandlers(to: tab)
         tab.lastUsed = Date()
         tab.uses += 1
         foregroundId = tab.id
         if ms > 0 { tab.lastRestoreMs = ms }
         urlBar.field.stringValue = NewTabPage.isNewTab(tab.url) ? "" : tab.url.absoluteString
+        if AboutMemory.isMemoryPage(tab.url) { refreshMemoryPages() }
         urlBar.isBookmarked = Store.isBookmarked(tab.url)
         updateSecurityIndicator(for: tab)
 
@@ -836,9 +863,38 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
         }
     }
 
+    /// Renders kestrel://memory into whichever tabs are showing it.
+    func refreshMemoryPages() {
+        let html = AboutMemory.html(tabs: tabs, scheduler: scheduler,
+                                    foregroundId: foregroundId)
+        for tab in tabs where AboutMemory.isMemoryPage(tab.url) {
+            tab.webView?.loadHTMLString(html, baseURL: nil)
+            if tab.title != "Memory" { tab.title = "Memory" }
+        }
+    }
+
+    @objc func openMemoryPage() {
+        if let existing = tabs.first(where: { AboutMemory.isMemoryPage($0.url) }) {
+            select(existing)
+        } else {
+            openTab(url: AboutMemory.sentinel)
+        }
+        refreshMemoryPages()
+    }
+
+    @objc func openNetworkPanel() {
+        if networkWindow == nil { networkWindow = NetworkWindowController() }
+        networkWindow?.show()
+    }
+
     func tick() {
         sampleMemory()
         applyBudgetAndRefresh()
+        refreshMemoryPages()
+        // Firefox writes the session periodically rather than only at quit, so a crash
+        // costs seconds of state instead of the whole window. ~10 s at this tick rate.
+        ticksSinceSave += 1
+        if ticksSinceSave >= 7 { ticksSinceSave = 0; saveSession() }
     }
 
     /// Enforce the budget and repaint, reading only cached measurements — cheap enough
@@ -983,6 +1039,7 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
     /// suffix — so the response MIME type gets the same treatment.
     func webView(_ webView: WKWebView, decidePolicyFor response: WKNavigationResponse,
                  decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
+        NetworkMonitor.recordNavigation(response.response)
         if ExtensionWeb.isExtensionMIME(response.response), let url = response.response.url {
             decisionHandler(.cancel)
             downloadAndInstallExtension(from: url)
@@ -1043,6 +1100,7 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         if let tab = tabs.first(where: { $0.webView === webView }) {
+            if tab.pageState.hasInput { tab.restorePending = true }
             if let u = webView.url, !NewTabPage.isNewTab(u) { tab.url = u }
             extensionsDidUpdate(tab, loading: true)
         }
@@ -1072,6 +1130,19 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
         placeholder.isHidden = true
         placeholderLabel.isHidden = true
         setLoading(false, for: webView)
+        // interactionState restores scroll for a live tab; a tab that came back from COLD
+        // or from a previous run needs its form contents put back explicitly.
+        if tab.pageState.hasInput || tab.pageState.scrollY > 0 {
+            let state = tab.pageState
+            webView.evaluateJavaScript(SessionStore.restoreScript(state)) { [weak self] n, _ in
+                tab.restorePending = false
+                if let n = n as? Int, n > 0 {
+                    self?.flash("restored \(n) field(s) you had filled in")
+                }
+            }
+        } else {
+            tab.restorePending = false
+        }
         extensionsDidUpdate(tab, loading: false)
         updateNavButtons()
         refreshTabStrip()
@@ -1181,11 +1252,19 @@ enum BrowserApp {
             // should see a window with something in it.
             controller.startExtensions()
         }
+        // Crash detection, the way Firefox does it: a flag that only exists while running.
+        if SessionStore.lastRunCrashed() {
+            controller.flash("Kestrel did not exit cleanly last time — session restored")
+        }
+        SessionStore.markRunning()
         NSApplication.shared.activate(ignoringOtherApps: true)
         // Persist the session on quit so restore has something to work with.
         NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification, object: nil, queue: .main
-        ) { _ in controller.saveSession() }
+        ) { _ in
+            controller.saveSession()
+            SessionStore.markCleanExit()
+        }
         withExtendedLifetime(controller) { NSApplication.shared.run() }
     }
 }

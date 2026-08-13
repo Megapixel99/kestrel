@@ -19,6 +19,9 @@ enum NewTabPage {
 
     static func isNewTab(_ url: URL?) -> Bool {
         guard let url else { return false }
+        // kestrel://memory is ours too but is not the new tab page; matching the whole
+        // scheme here would have made about:memory load a blank new tab.
+        if AboutMemory.isMemoryPage(url) { return false }
         return url == sentinel || url.scheme == "kestrel"
             || url.absoluteString == "about:blank"
     }

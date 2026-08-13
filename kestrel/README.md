@@ -36,6 +36,25 @@ width for a per-tab readout of state, memory and last restore latency.
 memory bar segmented by tab state with the budget drawn across it, and a status line that
 says explicitly when the budget is *unreachable* rather than silently sitting over it.
 
+**Session restore** keeps scroll position and unsent form contents, not just URLs —
+`interactionState` carries neither for a parked tab — writes every ten seconds rather than
+only at quit, and tells a crash from a clean exit by a flag file. Password fields are never
+captured. A tab with something typed into it will not be parked below COLD, which is where
+the typing survives; that demotion floor existed in the scheduler from the start and had
+nothing setting its flag until now.
+
+**`about:memory`** (wrench menu, or `kestrel://memory`) is the budget as a page: total
+against budget, each rung of the ladder with its share, and every tab's footprint, pid,
+restore latency and visit count. It re-renders on the browser's own tick and counts itself.
+
+**The network panel** (⌥⌘E) lists every request with status, method, domain, size and
+timing, and shows headers for the ones where headers exist. WKWebView has no request
+observer, so it is assembled from three sources and labels each row with which one it came
+from: `PerformanceObserver` for engine-fetched subresources (timing and size, no headers),
+wrappers around `fetch`/`XMLHttpRequest` for what the page requests itself (full headers,
+method, status), and the navigation delegate's `HTTPURLResponse` for the main document. A
+row with no headers says so and says why.
+
 **Everyday features:** find in page (⌘F), bookmarks (⌘D), history, session restore,
 reopen closed tab (⇧⌘T), zoom (⌘+/−/0), print (⌘P), save page as web archive, a QR code
 for the current URL, pop-up handling, and a search-or-navigate address bar.
@@ -78,6 +97,7 @@ Every mode below is a real check, not a smoke test.
 
 | mode | what it does |
 |---|---|
+| `sessiontest` | Fills a form, parks the tab COLD, brings it back, and asserts the values return — plus the password is never stored, the memory page's numbers come from the scheduler, and a recorded request's headers are real |
 | `exttest` | Builds a Firefox add-on, packs it as an `.xpi`, installs it, and asserts its content script ran in a page and its background script answered |
 | `extscan <dirs>` | Hands every `.xpi` in a directory to WebKit and reports which load and what each loses |
 | `extmem <dirs>` | Measures what each add-on costs, one at a time, with background pages forced to run |
@@ -127,6 +147,10 @@ Sources/kestrel/
   URLBar.swift           address pill: security indicator, progress, QR, bookmark
   NewTabPage.swift       new tab page and the search-or-navigate rule
   QRCode.swift           QR code for the current URL
+  SessionStore.swift     scroll/form capture, restore, crash detection
+  AboutMemory.swift      kestrel://memory, rendered from the scheduler
+  NetworkMonitor.swift   request capture from three partial sources
+  NetworkWindow.swift    the request list and header view
   AddonsPopover.swift    the installed add-ons list
   AddonStyle.swift       the one shared control it still needs
   DevTools.swift         task manager, console, page source, responsive mode

@@ -25,6 +25,11 @@ enum Store {
         var title: String
         var interactionState: Data?     // the COLD session image, reused across restarts
         var pinned: Bool
+        // interactionState covers scroll and back/forward history for a *live* tab and
+        // carries no form contents at all, so both are stored explicitly.
+        var scrollX: Double = 0
+        var scrollY: Double = 0
+        var formValues: [String: String] = [:]
     }
 
     static var dir: URL {

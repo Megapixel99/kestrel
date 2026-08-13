@@ -36,7 +36,22 @@ final class Tab: NSObject {
     var uses = 0
     var pinned = false
     var audible = false
+    /// Set from the page's own report. The scheduler's "unsubmitted input" demotion
+    /// floor reads this, and until SessionStore started filling it in, nothing did.
     var hasUnsubmittedInput = false
+
+    /// Scroll position and form contents, captured continuously so a tab parked at any
+    /// moment restores to where it was rather than to the top of a blank form.
+    var pageState = SessionStore.PageState()
+
+    /// Message handlers are per web view and adding a duplicate name traps, so a tab
+    /// remembers whether it has been wired. Reset when the view is rebuilt.
+    var handlersAttached = false
+
+    /// True from the moment a load starts on a tab that has captured state until that
+    /// state has been put back. A freshly loaded page reports empty fields, and without
+    /// this the report arrives first and wipes exactly what is about to be restored.
+    var restorePending = false
 
     /// Auto-refresh interval in seconds, nil = off. A tab on a refresh timer is a live
     /// dashboard: demoting it defeats the point, so it gets a LIVE floor in the
@@ -147,6 +162,8 @@ final class Tab: NSObject {
     private func makeLive(in container: NSView) {
         if webView == nil, let cfg = extensionConfig {
             cfg.applicationNameForUserAgent = UserAgent.applicationName
+            cfg.userContentController.addUserScript(SessionStore.captureScript())
+            cfg.userContentController.addUserScript(NetworkMonitor.captureScript())
             let wv = WKWebView(frame: container.bounds, configuration: cfg)
             wv.autoresizingMask = [.width, .height]
             webView = wv
@@ -161,6 +178,8 @@ final class Tab: NSObject {
             // refuse outright. Appending the Safari token completes it, which is
             // accurate: this really is WebKit.
             cfg.applicationNameForUserAgent = UserAgent.applicationName
+            cfg.userContentController.addUserScript(SessionStore.captureScript())
+            cfg.userContentController.addUserScript(NetworkMonitor.captureScript())
             // Extensions attach per configuration, so a tab restored from COLD comes
             // back with the same add-ons the rest of the window has.
             if #available(macOS 15.4, *) {
@@ -172,6 +191,7 @@ final class Tab: NSObject {
             let wv = WKWebView(frame: container.bounds, configuration: cfg)
             wv.autoresizingMask = [.width, .height]
             webView = wv
+            handlersAttached = false
             container.addSubview(wv)
             if let sessionImage { wv.interactionState = sessionImage }
             loadCurrent(into: wv)
@@ -233,7 +253,11 @@ final class Tab: NSObject {
 
     /// file:// needs loadFileURL with explicit read access; plain load() is blocked.
     private func loadCurrent(into wv: WKWebView) {
-        if NewTabPage.isNewTab(url) {
+        if AboutMemory.isMemoryPage(url) {
+            // A placeholder; the controller renders the real thing on its next tick,
+            // because the numbers belong to the scheduler, not to a tab.
+            wv.loadHTMLString("<html><body></body></html>", baseURL: nil)
+        } else if NewTabPage.isNewTab(url) {
             // Loaded as a string so the document has no URL of its own; the address bar
             // stays empty and the <title> supplies the tab name.
             wv.loadHTMLString(NewTabPage.html, baseURL: nil)
