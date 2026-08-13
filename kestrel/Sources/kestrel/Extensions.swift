@@ -180,7 +180,8 @@ enum ExtensionStore {
 /// content script see the page and `browser.tabs` see the window.
 @available(macOS 15.4, *)
 @MainActor
-final class ExtensionRuntime: NSObject, WKWebExtensionControllerDelegate {
+final class ExtensionRuntime: NSObject, WKWebExtensionControllerDelegate,
+                                     NSPopoverDelegate {
 
     static let shared = ExtensionRuntime()
 
@@ -314,7 +315,35 @@ final class ExtensionRuntime: NSObject, WKWebExtensionControllerDelegate {
         guard let pop = action.popupPopover else { return }
         popover = pop
         pop.behavior = .transient
+        pop.delegate = self
         pop.show(relativeTo: anchorRect(for: pop, in: view), of: view, preferredEdge: .maxY)
+        // WebKit sizes the popup only once its content has loaded, so the placement above
+        // is made on an assumption. This is the check against reality.
+        containPopup()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+            self?.containPopup()
+        }
+    }
+
+    func popoverDidShow(_ notification: Notification) { containPopup() }
+
+    /// Nudges a shown popup back inside the browser window.
+    ///
+    /// The backstop for `anchorRect`'s guess. It only fires when the guess was wrong, and
+    /// it moves the popover's own window, so the arrow stops pointing exactly at the
+    /// button — which is the lesser of the two problems by a distance.
+    private func containPopup() {
+        guard let pop = popover, pop.isShown,
+              let popWindow = pop.contentViewController?.view.window,
+              let host = browser?.window else { return }
+        let margin: CGFloat = 6
+        var f = popWindow.frame
+        let allowed = host.frame
+        if f.width < allowed.width - margin * 2 {
+            if f.maxX > allowed.maxX - margin { f.origin.x = allowed.maxX - margin - f.width }
+            if f.minX < allowed.minX + margin { f.origin.x = allowed.minX + margin }
+        }
+        if f.origin.x != popWindow.frame.origin.x { popWindow.setFrame(f, display: true) }
     }
 
     /// Keeps a popup inside the browser window.
@@ -327,9 +356,17 @@ final class ExtensionRuntime: NSObject, WKWebExtensionControllerDelegate {
     /// A popover centres itself on the rect it is given, so shifting that rect is enough:
     /// clamp the centre so the whole popup lands inside the window, and let the arrow do
     /// what it likes.
+    ///
+    /// The width has to be guessed. `NSPopover.contentSize` reads 0x0 for an add-on popup
+    /// both before and after `show()` — WebKit never populates it — so this assumes the
+    /// upper end of what real add-on popups use (Bitwarden's is 380) and `containPopup()`
+    /// corrects the guess once the thing is actually on screen.
+    static let assumedPopupWidth: CGFloat = 420
+
     func anchorRect(for pop: NSPopover, in view: NSView) -> NSRect {
         guard let window = view.window else { return view.bounds }
-        let width = max(pop.contentSize.width, 320)
+        let width = pop.contentSize.width > 1 ? pop.contentSize.width
+                                              : Self.assumedPopupWidth
         let margin: CGFloat = 8
         let content = window.contentLayoutRect
 

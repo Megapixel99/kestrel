@@ -252,7 +252,6 @@ enum ExtensionTest {
         // A popup wider than the space to the right of its button used to hang off the
         // side of the window: AppKit constrains a popover to the screen, not to the window.
         if let action = ctx.action(for: tab), let pop = action.popupPopover {
-            pop.contentSize = NSSize(width: 380, height: 420)
             browser.window.setContentSize(NSSize(width: 1000, height: 700))
             browser.window.layoutIfNeeded()
             browser.refreshExtensionButtons()
@@ -261,8 +260,12 @@ enum ExtensionTest {
                 let rect = runtime.anchorRect(for: pop, in: button)
                 // Where the popover will centre itself, in window coordinates.
                 let centre = button.convert(NSPoint(x: rect.midX, y: 0), to: nil).x
-                let left = centre - pop.contentSize.width / 2
-                let right = centre + pop.contentSize.width / 2
+                // contentSize reads 0x0 for a real add-on popup, which is why the
+                // positioning assumes a width; the test has to use the same figure or it
+                // is testing something the browser never does.
+                let assumed = ExtensionRuntime.assumedPopupWidth
+                let left = centre - assumed / 2
+                let right = centre + assumed / 2
                 let content = browser.window.contentLayoutRect
                 check("a wide popup is kept inside the window",
                       left >= content.minX - 1 && right <= content.maxX + 1,
