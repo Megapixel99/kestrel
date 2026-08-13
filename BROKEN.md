@@ -1,5 +1,8 @@
 # Open problems
 
+*Last swept 2026-08-13. Items 1–3 were fixed in that pass; 4–6 are limits or debts, not
+defects.*
+
 What is broken, what has already been ruled out, and where to start. DEBUGGING.md is the
 record of bugs that were *fixed*; this is the list that is still open, written so picking one
 up does not mean repeating the elimination work.
