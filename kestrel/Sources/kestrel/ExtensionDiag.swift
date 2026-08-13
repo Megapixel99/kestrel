@@ -106,6 +106,18 @@ enum ExtensionDiag {
             }
             print("in the page: \(probe ?? "no answer")")
 
+            // Which content-script worlds actually executed. Dark Reader's MV2 manifest
+            // carries `"world": "MAIN"` — a Chrome/MV3 key — on one entry, and whether
+            // that invalidates the sibling entry is not something the API will say.
+            var worlds: String?
+            wait(10) { done in
+                wv.evaluateJavaScript("""
+                (document.documentElement.getAttribute('data-world-main') || 'no') + ' / ' +
+                (document.documentElement.getAttribute('data-world-iso') || 'no')
+                """) { v, _ in worlds = v as? String; done() }
+            }
+            print("content script worlds (MAIN / ISOLATED): \(worlds ?? "no answer")")
+
             // What user agent the add-on's own pages see. Add-ons written for Firefox
             // branch on this: Dark Reader's canInjectScript() takes a per-browser path,
             // and a UA it does not recognise means "protected page, do nothing".

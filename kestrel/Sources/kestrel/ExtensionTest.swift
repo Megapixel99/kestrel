@@ -40,6 +40,11 @@ enum ExtensionTest {
         write(background, to: src.appendingPathComponent("background.js"))
         write("<html><body><h1 id=\"opts\">kestrel-options-page</h1></body></html>",
               to: src.appendingPathComponent("options.html"))
+        write("""
+              <html><body style="width:220px;margin:0">
+                <div id="pop" style="padding:14px">kestrel-popup-rendered</div>
+              </body></html>
+              """, to: src.appendingPathComponent("popup.html"))
 
         let xpi = tmp.appendingPathComponent("kestrel-test.xpi")
         let zip = Process()
@@ -74,6 +79,16 @@ enum ExtensionTest {
               ExtensionStore.gaps(in: ext).contains("sidebar panel"),
               ExtensionStore.gaps(in: ext).joined(separator: ", "))
 
+        // --- the browser's real order: a tab exists first, the add-on loads second ---
+        // A web view's extension controller cannot be set after creation, so a tab opened
+        // before any add-on loaded must still have been given one. It was not, for months:
+        // every add-on was dead in the first tab of every launch and in every tab open when
+        // one was installed. Creating the window here, before the load, is what makes this
+        // test able to fail.
+        let browser = BrowserWindowController()
+        defer { browser.window.close() }
+        browser.openTab(url: URL(string: "https://example.com/")!)
+
         // --- load it into WebKit's runtime ---
         let runtime = ExtensionRuntime.shared
         var loadError: String? = "not attempted"
@@ -92,10 +107,7 @@ enum ExtensionTest {
         // Through a real window and a real tab, not a bare web view: WebKit only injects
         // into a web view the runtime can trace back to a registered tab, and the whole
         // point of the exercise is the path the browser actually takes.
-        let browser = BrowserWindowController()
-        defer { browser.window.close() }
         runtime.browser = browser
-        browser.openTab(url: URL(string: "https://example.com/")!)
         guard let tab = browser.currentTab, let wv = tab.webView else {
             check("opened a tab for the extension to see", false)
             finishAndClean(failures + 1)
@@ -203,6 +215,40 @@ enum ExtensionTest {
         check("runtime.connect ports work", portState == "acked",
               portState ?? "no reply over the port")
 
+        // The popup: WebKit rendering the add-on's own HTML. This had no coverage at all
+        // because it looks like it needs a click — but the action hands over its web view,
+        // and a popup that renders blank or collapses to nothing is exactly what a headless
+        // check can see.
+        if let action = ctx.action(for: tab) {
+            check("the add-on declares a popup", action.presentsPopup)
+            if let popup = action.popupWebView {
+                var text: String?
+                wait(seconds: 12) { done in
+                    poll(popup, every: 0.4, until: 11,
+                         script: "document.getElementById('pop')?.textContent ?? ''") { v in
+                        text = v; done()
+                    }
+                }
+                check("the popup rendered its own HTML", text == "kestrel-popup-rendered",
+                      text ?? "blank")
+
+                var size: String?
+                wait(seconds: 8) { done in
+                    popup.evaluateJavaScript(
+                        "document.body.scrollWidth + 'x' + document.body.scrollHeight") { v, _ in
+                        size = v as? String; done()
+                    }
+                }
+                let dims = (size ?? "0x0").split(separator: "x").compactMap { Int($0) }
+                check("...at a usable size", dims.count == 2 && dims[0] > 40 && dims[1] > 10,
+                      size ?? "no answer")
+            } else {
+                check("the popup has a web view", false)
+            }
+        } else {
+            check("the add-on has a toolbar action", false)
+        }
+
         // The options page lives at webkit-extension://…, which only loads in a web view
         // built from the extension's own configuration — WebKit cancels the navigation in
         // any other. A plain tab showed nothing at all, with no error.
@@ -242,6 +288,7 @@ enum ExtensionTest {
       "content_scripts": [
         { "matches": ["<all_urls>"], "js": ["content.js"], "run_at": "document_end" }
       ],
+      "browser_action": { "default_popup": "popup.html", "default_title": "Kestrel Test" },
       "options_ui": { "page": "options.html", "open_in_tab": true },
       "sidebar_action": { "default_panel": "panel.html", "default_title": "Nope" },
       "browser_specific_settings": { "gecko": { "id": "test@kestrel" } }

@@ -209,9 +209,20 @@ final class ExtensionRuntime: NSObject, WKWebExtensionControllerDelegate {
 
     /// Attach the runtime to a tab's configuration. Called for every web view Kestrel
     /// creates, including ones restored from COLD.
+    /// Attached unconditionally, and that word is load-bearing.
+    ///
+    /// This used to skip when no extension had loaded yet — and a web view's extension
+    /// controller cannot be set after the fact. The browser creates its first tab before
+    /// `startExtensions()` runs, so that tab could never run a content script for the rest
+    /// of its life, and neither could any tab open at the moment an add-on was installed.
+    /// Every add-on then looked broken in exactly the way each add-on happens to express
+    /// "I cannot reach the page": Dark Reader called it a protected page, the ad blocker
+    /// blocked nothing, the password manager matched no site.
+    ///
+    /// The same mistake as DEBUGGING.md §3, where tabs created before the content rules
+    /// finished compiling got no blocking at all. An empty controller costs nothing.
     static func apply(to cfg: WKWebViewConfiguration) {
         guard #available(macOS 15.4, *) else { return }
-        guard !ExtensionRuntime.shared.contexts.isEmpty else { return }
         cfg.webExtensionController = ExtensionRuntime.shared.controller
     }
 

@@ -9,103 +9,51 @@ Each entry gives a repro, the evidence, and the next thing worth trying. Anythin
 
 ---
 
-## 1. Dark Reader does not theme pages — "This page is protected by browser"
+## ~~1. Dark Reader does not theme pages~~ — FIXED
 
-**Severity:** high. It is the most-used add-on installed, and the symptom looks like a
-browser fault rather than an add-on one.
+## ~~2. Adblock Plus and Bitwarden~~ — same cause, FIXED
 
-**Repro**
+**One bug, three symptoms.** `ExtensionRuntime.apply(to:)` refused to attach the extension
+controller to a web view when no add-on had loaded *yet* — and a web view's controller
+cannot be set after creation. The browser creates its first tab before `startExtensions()`
+runs, so that tab could never run a content script for the rest of its life, and neither
+could any tab already open when an add-on was installed.
 
-```bash
-cd kestrel && ./.build/debug/kestrel extdiag darkreader https://example.com/
-```
+Every add-on then failed in whatever way it happens to express "I cannot reach the page":
 
-Or in the GUI: load any https page, open Dark Reader's popup. The page stays light and the
-popup reports the page as protected.
+- Dark Reader called it a protected page (`canAccessTab()` false, because no content script
+  ever announced itself)
+- Adblock Plus blocked nothing
+- Bitwarden matched no site
 
-**Evidence**
+After the one-line fix, on the same page that had produced nothing for weeks:
 
-```
-granted API perms:   alarms, contextMenus, storage, tabs, theme
-granted patterns:    *://*/*
-access to all hosts: true        injects into this page: true
-background: loaded               manifest errors: none    runtime errors: none
-in the page: 0 darkreader styles, background rgba(0,0,0,0), filter none
-```
+    in the page: 8 darkreader styles, background rgb(24, 26, 27)
 
-Everything it asked for was granted, its background page loads, WebKit reports no manifest
-or runtime error — and nothing reaches the page.
+**This is DEBUGGING.md §3 a second time.** That entry reads: "Tabs created before
+compilation finishes get no blocking at all." Same shape, same file, different subsystem —
+an asynchronous subsystem attached at web-view creation, and a web view created before it
+was ready. The guard that caused it was a micro-optimisation: don't attach a controller
+nobody is using. An empty controller costs nothing.
 
-**Eliminated** (all tested against a purpose-built add-on in `exttest`, all passing):
+`exttest` now creates the window and its tab **before** loading the add-on, which is the
+order the browser actually uses, and nine of its checks fail if the guard comes back.
 
-| | |
-|---|---|
-| content script injection at `document_start` | runs |
-| content → background `sendMessage` | replies |
-| `sender.tab.id` / `.url` / `frameId` / `documentId` | `tab=true id=28 url=https://example.com/ frame=0 doc=yes` |
-| background → content `tabs.sendMessage` | received |
-| `runtime.connect` long-lived ports | acked |
-| `tabs.query()`, including tabs opened after load | sees both |
-| permissions, host patterns, background load, manifest parse | clean |
+Everything eliminated while chasing this — `sender.tab.id`, both messaging directions,
+ports, `tabs.query`, permissions, background load, manifest parse — was eliminated
+correctly. All of it worked. None of it was reachable, because there was no content script
+in the tab to use it.
 
-`sender.tab.id` matters most: Dark Reader's `canAccessTab()` is literally
-`Boolean(TabManager.tabs[tab.id])`, populated only from that field, and
-`isProtected = !tab.isInjected || tab.isProtected` is the code path printing the message.
-The input is present and correct.
-
-**Fixed along the way, did not resolve it:** extension pages were getting WKWebView's
-truncated user agent with no product token at all — no Firefox, no Safari, no Chrome. Firefox
-add-ons branch on the browser they think they are running in, and Dark Reader's
-`canInjectScript()` has no branch for "unknown". Now `… Gecko/20100101 Firefox/141.0`
-(`UserAgent.extensionApplicationName`, commit `419a906`).
-
-**Where to start next**
-
-1. Its manifest is an MV2 manifest carrying `"world": "MAIN"` on the first content script —
-   a Chrome/MV3 key. WebKit reports no manifest error, and the API does not expose whether
-   that entry executes. Build a two-entry content-script test add-on, one `MAIN` and one
-   `ISOLATED`, and find out whether an unrecognised `world` value invalidates the sibling
-   entry.
-2. `ctx.isInspectable` is already true. Attaching Safari's Web Inspector to the add-on's
-   background page would show its own console, which is the fastest route to what it thinks
-   is wrong — and is the one avenue not yet tried, because it cannot be driven headlessly.
-3. Compare against a second theming add-on. If one works, diff the manifests rather than
-   the code.
-
-**Files:** `Extensions.swift`, `ExtensionBridge.swift`, `ExtensionDiag.swift`,
-`ExtensionTest.swift`.
+The `world: MAIN` lead in Dark Reader's manifest was a red herring: a two-entry probe
+add-on shows both `MAIN` and `ISOLATED` content scripts run.
 
 ---
 
-## 2. Adblock Plus and Bitwarden "seem to have issues"
+## ~~3. Add-on popups are unverified~~ — now covered
 
-**Severity:** unknown — no specific symptom was ever captured.
-
-Reported alongside #1 and assumed to share a cause. **That assumption is untested.** Both
-load cleanly and both were granted everything they declared.
-
-**Where to start:** get one concrete symptom each (an ad that should have been blocked and
-was not; a site where the vault finds no match) before assuming anything. `extdiag
-adblock_plus <url>` and `extdiag bitwarden <url>` print the same attribution table as #1.
-
-Note that Adblock Plus declares `webRequest` and `webRequestBlocking`, which are MV2 blocking
-APIs. Whether WebKit's runtime implements blocking `webRequest` at all is not something
-`extdiag` currently reports, and it is the obvious first question for that one.
-
----
-
-## 3. Add-on popups are unverified, not known-good
-
-**Severity:** low, but it is a coverage gap rather than a bug.
-
-Every other part of the add-on path has a headless check. The popup — WebKit rendering an
-add-on's own HTML into an `NSPopover` — has none, because it needs a real window and a real
-click. If a popup renders wrongly, nothing in the test suite will say so.
-
-**Where to start:** `WKWebExtension.Action.popupWebView` is reachable headlessly (the UA probe
-in `ExtensionDiag` already evaluates JavaScript in it). A check could assert the popup's
-document reaches a non-empty `body` and a plausible size, which would catch a blank or
-collapsed popup without needing a click.
+`exttest`'s add-on declares a `browser_action` popup, and the test asserts the popup's own
+HTML rendered and that it reaches a usable size. `WKWebExtension.Action.popupWebView` is
+reachable without a click, so what looked like it needed a real window did not.
 
 ---
 
