@@ -102,19 +102,6 @@ enum AddonStyle {
         return y - h - 14
     }
 
-    @discardableResult
-    static func button(_ title: String, in v: NSView, x: CGFloat, y: CGFloat,
-                       width: CGFloat, target: AnyObject, action: Selector,
-                       prominent: Bool = false) -> NSButton {
-        let b = NSButton(title: title, target: target, action: action)
-        b.frame = NSRect(x: x, y: y, width: width, height: 28)
-        b.bezelStyle = .rounded
-        b.font = .systemFont(ofSize: 12)
-        if prominent { b.keyEquivalent = "\r" }
-        v.addSubview(b)
-        return b
-    }
-
     /// Label + slider + value, with the stepper arrows the Dark Reader panel uses.
     @discardableResult
     static func slider(_ title: String, key: String, value: Int, in v: NSView, y: CGFloat,

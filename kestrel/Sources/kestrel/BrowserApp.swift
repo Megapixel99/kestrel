@@ -11,6 +11,10 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
     let placeholder = NSImageView()
     let placeholderLabel = NSTextField(labelWithString: "")
     let tabStrip = TabStripView()
+    /// Nav controls live in a container so switching between horizontal and vertical
+    /// tabs can move the whole bar; positioning them individually left a dead 38 pt
+    /// gap where the hidden strip used to be.
+    let navBar = NSView()
     let sidebar = NSScrollView()
     let sidebarTable = NSTableView()
     var urlBar: URLBarView!
@@ -19,7 +23,6 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
     let budgetSlider = NSSlider()
     let budgetLabel = NSTextField(labelWithString: "")
     let capPopup = NSPopUpButton()
-    let legend = NSTextField(labelWithString: "")
 
     public var tabs: [Tab] = []
     var nextId = 0
@@ -103,16 +106,18 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
         root.addSubview(sidebar)
 
         // ---- nav bar ----
-        let navY = H - stripH - navH
+        navBar.frame = NSRect(x: 0, y: H - stripH - navH, width: W, height: navH)
+        navBar.autoresizingMask = [.width, .minYMargin]
+        root.addSubview(navBar)
+        let navY: CGFloat = 0          // relative to navBar
         var x: CGFloat = 10
         func navIcon(_ symbol: String, _ fallback: String, _ sel: Selector,
                      _ tip: String) -> NSButton {
             let b = Toolbar.iconButton(symbol: symbol, fallback: fallback, tip: tip,
                                        size: 14, target: self, action: sel)
             b.frame = NSRect(x: x, y: navY + 8, width: 28, height: 26)
-            b.autoresizingMask = [.minYMargin]
             x += 30
-            root.addSubview(b)
+            navBar.addSubview(b)
             return b
         }
         backButton = navIcon("arrow.left", "\u{2190}", #selector(goBack), "Back")
@@ -124,7 +129,7 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
         let rightW: CGFloat = 108
         urlBar = URLBarView(frame: NSRect(x: x + 6, y: navY + 7,
                                           width: W - x - rightW - 22, height: 28))
-        urlBar.autoresizingMask = [.width, .minYMargin]
+        urlBar.autoresizingMask = [.width]
         urlBar.field.placeholderString =
             "Search \(NewTabPage.searchEngineName) or enter address"
         urlBar.field.target = self
@@ -132,16 +137,16 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
         urlBar.field.delegate = self
         urlBar.onQR = { [weak self] in self?.showQR() }
         urlBar.onBookmark = { [weak self] in self?.toggleBookmark() }
-        root.addSubview(urlBar)
+        navBar.addSubview(urlBar)
 
         var bx = W - rightW - 8
         func rightIcon(_ symbol: String, _ fallback: String, _ sel: Selector, _ tip: String) {
             let b = Toolbar.iconButton(symbol: symbol, fallback: fallback, tip: tip,
                                        size: 15, target: self, action: sel)
             b.frame = NSRect(x: bx, y: navY + 8, width: 30, height: 26)
-            b.autoresizingMask = [.minXMargin, .minYMargin]
+            b.autoresizingMask = [.minXMargin]
             bx += 33
-            root.addSubview(b)
+            navBar.addSubview(b)
         }
         rightIcon("wrench.adjustable", "\u{2692}", #selector(pageToolsMenu),
                   "Page tools — dark mode, capture, auto-refresh")
@@ -221,6 +226,7 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
         sidebar.isHidden = !vertical
 
         let topInset = vertical ? navH : stripH + navH
+        navBar.frame = NSRect(x: 0, y: H - topInset, width: W, height: navH)
         if vertical {
             sidebar.frame = NSRect(x: 0, y: bottomH, width: sidebarW,
                                    height: H - bottomH - navH)
@@ -323,26 +329,6 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
     }
 
     // MARK: - screenshots
-
-    @objc func screenshotMenu(_ sender: NSButton) {   // kept for the keyboard path
-        let menu = NSMenu(title: "Capture")
-        for (title, sel) in [("Visible Area", #selector(shotVisible)),
-                             ("Full Page", #selector(shotFullPage)),
-                             ("Region…", #selector(shotRegion)),
-                             ("Full Page as PDF", #selector(shotPDF))] {
-            let item = NSMenuItem(title: title, action: sel, keyEquivalent: "")
-            item.target = self
-            menu.addItem(item)
-        }
-        menu.addItem(.separator())
-        let clip = NSMenuItem(title: "Copy to clipboard instead of saving",
-                              action: #selector(toggleShotToClipboard), keyEquivalent: "")
-        clip.target = self
-        clip.state = shotToClipboard ? .on : .off
-        menu.addItem(clip)
-        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 4),
-                   in: sender)
-    }
 
     @objc public func toggleShotToClipboard() { shotToClipboard.toggle() }
 
@@ -764,28 +750,6 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
             controller.removeAllContentRuleLists()
             flash("ad blocking disabled on \(host) — reload to take effect")
         }
-    }
-
-    @objc func addonsMenuLegacy(_ sender: NSButton) {
-        let menu = NSMenu(title: "Add-ons")
-        func add(_ title: String, _ sel: Selector?, enabled: Bool = true) {
-            let i = NSMenuItem(title: title, action: sel, keyEquivalent: "")
-            i.target = self; i.isEnabled = enabled
-            menu.addItem(i)
-        }
-        let custom = ContentBlocker.customStats.map { " + \($0.blocked) from filters.txt" } ?? ""
-        add("Ad blocker: \(ContentBlocker.ruleCount) built-in rules\(custom)", nil, enabled: false)
-        add("Reload Blocklist from ~/.kestrel/filters.txt", #selector(reloadBlocklist))
-        menu.addItem(.separator())
-        add("Dark Reader: \(DarkReaderBridge.version)", nil, enabled: false)
-        let scripts = UserScriptStore.loadAll()
-        add("Userscripts: \(scripts.count) loaded", nil, enabled: false)
-        for s in scripts.prefix(6) { add("    \(s.name)", nil, enabled: false) }
-        add("Reload Userscripts", #selector(reloadUserScripts))
-        menu.addItem(.separator())
-        add("Bitwarden: \(Bitwarden.status().shortLabel)", nil, enabled: false)
-        add("Fill Password on This Page", #selector(bitwardenFill))
-        popUp(menu, from: sender)
     }
 
     /// Application menu.

@@ -753,7 +753,6 @@ final class AddonsPopoverController: NSViewController {
     @objc private func formatChanged(_ p: NSPopUpButton) {
         Prefs.shotFormat = p.titleOfSelectedItem ?? "PNG"
     }
-    @objc private func capClipboard(_ b: NSButton) { browser?.toggleShotToClipboard() }
 }
 
 /// One row in the add-ons list: icon, name, status, chevron.
