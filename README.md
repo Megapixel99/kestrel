@@ -16,6 +16,8 @@ it on WebKit.
   Bitwarden autofill, developer tools, and twelve headless test and diagnostic modes.
 - **[DEBUGGING.md](DEBUGGING.md)** — the implementation bugs that looked correct while
   being broken, including two I could not fix and said so.
+- **[BENCHMARKS.md](BENCHMARKS.md)** — every comparison in one place, regenerated from
+  the data by `bench/compare.py` rather than transcribed.
 
 **Short version:** in simulation the thesis looked strong — 8.9× less memory on a realistic tab
 distribution, with almost all of the win from one item (the tab scheduler), one item overrated
@@ -75,10 +77,15 @@ are a **controlled pair** — the same 11 pages loaded side by side in both brow
 | file | source | procs | median | max |
 |---|---|---|---|---|
 | `chrome_renderer_rss_mb.txt` | Chrome, `ps` sample | 17 | 137 MB | 717 MB |
-| `firefox_content_rss_mb.txt` | Firefox, 16 tabs | 17 | 262 MB | 1005 MB |
+| `firefox_content_rss_mb.txt` | Firefox, 16 tabs | 17 | 174 MB | 1005 MB |
 | `chrome2_renderer_rss_mb.txt` | Chrome, 11 tabs (3 live Meet calls) | 25 | 146 MB | 723 MB |
 | `firefox_matched_rss_mb.txt` | **Firefox, 11 matched tabs** | 11 | 236 MB | 923 MB |
 | `chrome_matched_rss_mb.txt` | **Chrome, same 11 tabs** | 26 | 110 MB | 584 MB |
+
+Medians are over every entry in each file. RESULTS.md quotes 262 MB for the Firefox
+16-tab sample; that is the median of its 14 *isolated* content processes, excluding three
+near-empty ones, and is the right figure for the architectural comparison there. The
+benchmark bootstraps from all 17, so 174 MB is the right figure here.
 
 *In simulation* the scheduler result holds at **7.9–11.5× less memory with zero state-losing
 reloads** across every one of them, and what varies is how much the per-tab cap matters, which

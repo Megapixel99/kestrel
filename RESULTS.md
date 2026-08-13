@@ -278,7 +278,7 @@ The first pair of snapshots — taken before the workloads were matched — poin
 | **Total memory per tab** | **479 MB** | **571 MB** |
 | Content memory per tab | 355 MB | 452 MB |
 | Largest single process | 1005 MB | 723 MB |
-| Content proc median / mean | 262 / 399 MB | 146 / 199 MB |
+| Content proc median / mean | 262 / 399 MB* | 146 / 199 MB |
 
 On these numbers Chrome cost **19% more per tab** than Firefox, and I wrote that the premise was
 unsupported. That conclusion was wrong, and the flaw was visible at the time: the Chrome session

@@ -1,0 +1,363 @@
+{
+  "simulation": [
+    {
+      "file": "chrome_renderer_rss_mb.txt",
+      "procs": 17,
+      "median_mb": 136.546875,
+      "max_mb": 717.046875,
+      "budget_gb": 2.0,
+      "policies": {
+        "status quo (no eviction)": {
+          "peak_mb": 17583.75,
+          "mean_mb": 17141.32437109375,
+          "over_budget_pct": 99.6,
+          "final_tabs": 80,
+          "restores": 0,
+          "state_losses": 0,
+          "stall_s": 0.0,
+          "p50_ms": 0.0,
+          "p95_ms": 0.0,
+          "janky_restores": 0,
+          "reclaim_s": 0.0,
+          "oom_breaks": 0,
+          "capped_visit_pct": 0.0
+        },
+        "discard-LRU (browsers today)": {
+          "peak_mb": 5207.7734375,
+          "mean_mb": 3145.0790756835936,
+          "over_budget_pct": 96.625,
+          "final_tabs": 80,
+          "restores": 2453,
+          "state_losses": 2453,
+          "stall_s": 2698.3,
+          "p50_ms": 1100.0,
+          "p95_ms": 1100.0,
+          "janky_restores": 2453,
+          "reclaim_s": 0.0,
+          "oom_breaks": 0,
+          "capped_visit_pct": 0.0
+        },
+        "Kestrel (4-state, scored)": {
+          "peak_mb": 2959.3898420333862,
+          "mean_mb": 1928.625988956213,
+          "over_budget_pct": 4.1,
+          "final_tabs": 80,
+          "restores": 1758,
+          "state_losses": 0,
+          "stall_s": 305.01,
+          "p50_ms": 150.0,
+          "p95_ms": 450.0,
+          "janky_restores": 1073,
+          "reclaim_s": 0.0,
+          "oom_breaks": 0,
+          "capped_visit_pct": 0.0
+        }
+      },
+      "label": "Chrome, ps sample"
+    },
+    {
+      "file": "firefox_content_rss_mb.txt",
+      "procs": 17,
+      "median_mb": 174.099609375,
+      "max_mb": 1005.3994140625,
+      "budget_gb": 2.0,
+      "policies": {
+        "status quo (no eviction)": {
+          "peak_mb": 27461.376953125,
+          "mean_mb": 26771.850629638673,
+          "over_budget_pct": 99.725,
+          "final_tabs": 80,
+          "restores": 0,
+          "state_losses": 0,
+          "stall_s": 0.0,
+          "p50_ms": 0.0,
+          "p95_ms": 0.0,
+          "janky_restores": 0,
+          "reclaim_s": 0.0,
+          "oom_breaks": 0,
+          "capped_visit_pct": 0.0
+        },
+        "discard-LRU (browsers today)": {
+          "peak_mb": 8634.51953125,
+          "mean_mb": 4919.04094897461,
+          "over_budget_pct": 98.3,
+          "final_tabs": 80,
+          "restores": 2494,
+          "state_losses": 2494,
+          "stall_s": 2743.4,
+          "p50_ms": 1100.0,
+          "p95_ms": 1100.0,
+          "janky_restores": 2494,
+          "reclaim_s": 0.0,
+          "oom_breaks": 0,
+          "capped_visit_pct": 0.0
+        },
+        "Kestrel (4-state, scored)": {
+          "peak_mb": 4863.345652580261,
+          "mean_mb": 2445.7215304594038,
+          "over_budget_pct": 67.075,
+          "final_tabs": 80,
+          "restores": 1906,
+          "state_losses": 0,
+          "stall_s": 437.33,
+          "p50_ms": 150.0,
+          "p95_ms": 450.0,
+          "janky_restores": 1761,
+          "reclaim_s": 0.0,
+          "oom_breaks": 0,
+          "capped_visit_pct": 0.0
+        }
+      },
+      "label": "Firefox, 16 tabs"
+    },
+    {
+      "file": "chrome2_renderer_rss_mb.txt",
+      "procs": 25,
+      "median_mb": 146.19921875,
+      "max_mb": 723.3994140625,
+      "budget_gb": 2.0,
+      "policies": {
+        "status quo (no eviction)": {
+          "peak_mb": 15438.166015625,
+          "mean_mb": 15100.732579345704,
+          "over_budget_pct": 99.55,
+          "final_tabs": 80,
+          "restores": 0,
+          "state_losses": 0,
+          "stall_s": 0.0,
+          "p50_ms": 0.0,
+          "p95_ms": 0.0,
+          "janky_restores": 0,
+          "reclaim_s": 0.0,
+          "oom_breaks": 0,
+          "capped_visit_pct": 0.0
+        },
+        "discard-LRU (browsers today)": {
+          "peak_mb": 3854.4208984375,
+          "mean_mb": 2450.7094704589845,
+          "over_budget_pct": 74.725,
+          "final_tabs": 80,
+          "restores": 2332,
+          "state_losses": 2332,
+          "stall_s": 2565.2,
+          "p50_ms": 1100.0,
+          "p95_ms": 1100.0,
+          "janky_restores": 2332,
+          "reclaim_s": 0.0,
+          "oom_breaks": 0,
+          "capped_visit_pct": 0.0
+        },
+        "Kestrel (4-state, scored)": {
+          "peak_mb": 2611.3287105560303,
+          "mean_mb": 1923.355560280323,
+          "over_budget_pct": 2.225,
+          "final_tabs": 80,
+          "restores": 1632,
+          "state_losses": 0,
+          "stall_s": 243.65,
+          "p50_ms": 150.0,
+          "p95_ms": 450.0,
+          "janky_restores": 875,
+          "reclaim_s": 0.0,
+          "oom_breaks": 0,
+          "capped_visit_pct": 0.0
+        }
+      },
+      "label": "Chrome, 11 tabs + Meet calls"
+    },
+    {
+      "file": "firefox_matched_rss_mb.txt",
+      "procs": 11,
+      "median_mb": 235.599609375,
+      "max_mb": 923.3994140625,
+      "budget_gb": 2.0,
+      "policies": {
+        "status quo (no eviction)": {
+          "peak_mb": 29006.9765625,
+          "mean_mb": 28375.971166748048,
+          "over_budget_pct": 99.8,
+          "final_tabs": 80,
+          "restores": 0,
+          "state_losses": 0,
+          "stall_s": 0.0,
+          "p50_ms": 0.0,
+          "p95_ms": 0.0,
+          "janky_restores": 0,
+          "reclaim_s": 0.0,
+          "oom_breaks": 0,
+          "capped_visit_pct": 0.0
+        },
+        "discard-LRU (browsers today)": {
+          "peak_mb": 8833.0244140625,
+          "mean_mb": 4364.36922241211,
+          "over_budget_pct": 97.1,
+          "final_tabs": 80,
+          "restores": 2464,
+          "state_losses": 2464,
+          "stall_s": 2710.4,
+          "p50_ms": 1100.0,
+          "p95_ms": 1100.0,
+          "janky_restores": 2464,
+          "reclaim_s": 0.0,
+          "oom_breaks": 0,
+          "capped_visit_pct": 0.0
+        },
+        "Kestrel (4-state, scored)": {
+          "peak_mb": 4511.321969985962,
+          "mean_mb": 2456.946102146387,
+          "over_budget_pct": 65.425,
+          "final_tabs": 80,
+          "restores": 1881,
+          "state_losses": 0,
+          "stall_s": 455.42,
+          "p50_ms": 150.0,
+          "p95_ms": 450.0,
+          "janky_restores": 1700,
+          "reclaim_s": 0.0,
+          "oom_breaks": 0,
+          "capped_visit_pct": 0.0
+        }
+      },
+      "label": "Firefox, 11 matched tabs"
+    },
+    {
+      "file": "chrome_matched_rss_mb.txt",
+      "procs": 26,
+      "median_mb": 110.3994140625,
+      "max_mb": 584.3994140625,
+      "budget_gb": 2.0,
+      "policies": {
+        "status quo (no eviction)": {
+          "peak_mb": 10560.3720703125,
+          "mean_mb": 10360.000075683594,
+          "over_budget_pct": 99.225,
+          "final_tabs": 80,
+          "restores": 0,
+          "state_losses": 0,
+          "stall_s": 0.0,
+          "p50_ms": 0.0,
+          "p95_ms": 0.0,
+          "janky_restores": 0,
+          "reclaim_s": 0.0,
+          "oom_breaks": 0,
+          "capped_visit_pct": 0.0
+        },
+        "discard-LRU (browsers today)": {
+          "peak_mb": 2772.015625,
+          "mean_mb": 1933.6139443359375,
+          "over_budget_pct": 4.15,
+          "final_tabs": 80,
+          "restores": 1525,
+          "state_losses": 1525,
+          "stall_s": 1677.5,
+          "p50_ms": 1100.0,
+          "p95_ms": 1100.0,
+          "janky_restores": 1525,
+          "reclaim_s": 0.0,
+          "oom_breaks": 0,
+          "capped_visit_pct": 0.0
+        },
+        "Kestrel (4-state, scored)": {
+          "peak_mb": 2047.9322633743286,
+          "mean_mb": 1933.5841429965496,
+          "over_budget_pct": 0.0,
+          "final_tabs": 80,
+          "restores": 1273,
+          "state_losses": 0,
+          "stall_s": 137.84,
+          "p50_ms": 20.0,
+          "p95_ms": 450.0,
+          "janky_restores": 456,
+          "reclaim_s": 0.0,
+          "oom_breaks": 0,
+          "capped_visit_pct": 0.0
+        }
+      },
+      "label": "Chrome, same 11 tabs"
+    }
+  ],
+  "engine": {
+    "light pages, 150 MB budget": {
+      "none": {
+        "policy": "none",
+        "mean_mb": "319.9",
+        "peak_mb": "368.6",
+        "over_budget_pct": "88",
+        "restores": "10",
+        "p95_restore_ms": "3555",
+        "state_lost": "0",
+        "demotions": "0",
+        "gave_up": "0"
+      },
+      "discardlru": {
+        "policy": "discardlru",
+        "mean_mb": "104.6",
+        "peak_mb": "140.0",
+        "over_budget_pct": "0",
+        "restores": "19",
+        "p95_restore_ms": "3546",
+        "state_lost": "17",
+        "demotions": "17",
+        "gave_up": "0"
+      },
+      "kestrel": {
+        "policy": "kestrel",
+        "mean_mb": "121.7",
+        "peak_mb": "144.0",
+        "over_budget_pct": "0",
+        "restores": "18",
+        "p95_restore_ms": "3541",
+        "state_lost": "14",
+        "demotions": "44",
+        "gave_up": "1"
+      }
+    },
+    "heavy pages, 800 MB budget": {
+      "none": {
+        "policy": "none",
+        "mean_mb": "968.2",
+        "peak_mb": "1111.0",
+        "over_budget_pct": "82",
+        "restores": "10",
+        "p95_restore_ms": "445",
+        "state_lost": "0",
+        "demotions": "0",
+        "gave_up": "0"
+      },
+      "discardlru": {
+        "policy": "discardlru",
+        "mean_mb": "668.5",
+        "peak_mb": "765.0",
+        "over_budget_pct": "0",
+        "restores": "12",
+        "p95_restore_ms": "488",
+        "state_lost": "5",
+        "demotions": "5",
+        "gave_up": "0"
+      },
+      "kestrel": {
+        "policy": "kestrel",
+        "mean_mb": "678.8",
+        "peak_mb": "787.0",
+        "over_budget_pct": "0",
+        "restores": "14",
+        "p95_restore_ms": "450",
+        "state_lost": "0",
+        "demotions": "13",
+        "gave_up": "0"
+      }
+    }
+  },
+  "config": {
+    "events": 4000,
+    "tabs": 80,
+    "alpha": 1.1,
+    "seeds": [
+      11,
+      23,
+      37,
+      51,
+      67
+    ]
+  }
+}
