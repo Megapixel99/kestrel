@@ -13,7 +13,7 @@ final class AddonsPopoverController: NSViewController {
     static let width: CGFloat = 360
     private static let rowH: CGFloat = 54
     private static let headerH: CGFloat = 44
-    private static let footerH: CGFloat = 172
+    private static let footerH: CGFloat = 206
 
     /// Sized to its content. A fixed height drew the footer over the last row, which is
     /// the bug the layout test was originally written for.
@@ -96,7 +96,12 @@ final class AddonsPopoverController: NSViewController {
         }
 
         y -= 26
-        AddonStyle.wideButton("Install add-on\u{2026}", in: v, y: y, target: self,
+        // The store first, because that is where add-ons actually come from. The file
+        // picker stays for an .xpi that is not on AMO — a beta build, or one you wrote.
+        AddonStyle.wideButton("Browse Firefox Add-ons\u{2026}", in: v, y: y, target: self,
+                              action: #selector(browseStore), prominent: true)
+        y -= 34
+        AddonStyle.wideButton("Install from file\u{2026}", in: v, y: y, target: self,
                               action: #selector(install))
         y -= 34
         AddonStyle.wideButton("Open add-ons folder", in: v, y: y, target: self,
@@ -179,6 +184,15 @@ final class AddonsPopoverController: NSViewController {
         ExtensionStore.remove(ext)
         browser?.refreshExtensionButtons()
         showRoot()
+    }
+
+    /// Opens addons.mozilla.org in a tab. Kestrel sends a Firefox user agent to that
+    /// host — AMO hides its install button from anything else — and intercepts the .xpi
+    /// the button links to, so "Add to Firefox" installs here.
+    @objc private func browseStore() {
+        guard let url = URL(string: "https://addons.mozilla.org/en-US/firefox/") else { return }
+        browser?.addonsPopover?.close()
+        browser?.openTab(url: url)
     }
 
     @objc private func install() {
