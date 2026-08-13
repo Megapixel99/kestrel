@@ -33,36 +33,86 @@ enum AddonStyle {
     static func section(_ text: String, in v: NSView, y: CGFloat) -> CGFloat {
         let l = NSTextField(labelWithString: text.uppercased())
         l.frame = NSRect(x: 16, y: y, width: v.bounds.width - 32, height: 15)
+        l.alignment = .center
         l.font = .systemFont(ofSize: 10, weight: .semibold)
         l.textColor = .tertiaryLabelColor
         v.addSubview(l)
         return y - 22
     }
 
-    /// A title/subtitle row with a switch on the right.
+    /// Title, subtitle and switch, stacked and centred. This was a left-aligned row with
+    /// the switch floated right, which was the one thing in these panes that did not line
+    /// up on the centre axis.
     @discardableResult
     static func toggleRow(_ title: String, subtitle: String, on: Bool,
                           in v: NSView, y: CGFloat,
                           target: AnyObject, action: Selector, tag: Int = 0) -> CGFloat {
         let t = NSTextField(labelWithString: title)
-        t.frame = NSRect(x: 16, y: y, width: v.bounds.width - 90, height: 18)
+        t.frame = NSRect(x: 16, y: y, width: v.bounds.width - 32, height: 18)
+        t.alignment = .center
         t.font = .systemFont(ofSize: 13, weight: .medium)
         v.addSubview(t)
 
         let s = NSTextField(labelWithString: subtitle)
-        s.frame = NSRect(x: 16, y: y - 17, width: v.bounds.width - 90, height: 16)
+        s.frame = NSRect(x: 16, y: y - 17, width: v.bounds.width - 32, height: 16)
+        s.alignment = .center
         s.font = .systemFont(ofSize: 11)
         s.textColor = .secondaryLabelColor
         s.lineBreakMode = .byTruncatingMiddle
         v.addSubview(s)
 
-        let sw = NSSwitch(frame: NSRect(x: v.bounds.width - 62, y: y - 8, width: 40, height: 22))
+        let sw = NSSwitch(frame: NSRect(x: (v.bounds.width - 40) / 2, y: y - 45,
+                                        width: 40, height: 22))
         sw.state = on ? .on : .off
         sw.target = target
         sw.action = action
         sw.tag = tag
         v.addSubview(sw)
-        return y - 46
+        return y - 76
+    }
+
+    /// A label and a control side by side, centred as a pair rather than pinned to the
+    /// left margin.
+    @discardableResult
+    static func formRow(_ title: String, control: NSView, in v: NSView, y: CGFloat,
+                        controlWidth: CGFloat) -> CGFloat {
+        let labelW: CGFloat = 54, gap: CGFloat = 8
+        let x = ((v.bounds.width - (labelW + gap + controlWidth)) / 2).rounded()
+
+        let l = NSTextField(labelWithString: title)
+        l.frame = NSRect(x: x, y: y + 3, width: labelW, height: 18)
+        l.alignment = .right
+        l.font = .systemFont(ofSize: 11)
+        l.textColor = .secondaryLabelColor
+        v.addSubview(l)
+
+        control.frame = NSRect(x: x + labelW + gap, y: y,
+                               width: controlWidth, height: control.frame.height)
+        v.addSubview(control)
+        return y - 34
+    }
+
+    /// A column of radio buttons, centred on the widest of them.
+    @discardableResult
+    static func radioColumn(_ titles: [String], selected: Int, in v: NSView, y: CGFloat,
+                            target: AnyObject, action: Selector) -> CGFloat {
+        var buttons: [NSButton] = []
+        var widest: CGFloat = 0
+        for (i, t) in titles.enumerated() {
+            let b = NSButton(radioButtonWithTitle: t, target: target, action: action)
+            b.tag = i
+            b.state = i == selected ? .on : .off
+            widest = max(widest, b.fittingSize.width.rounded(.up))
+            buttons.append(b)
+        }
+        var top = y
+        for b in buttons {
+            b.frame = NSRect(x: ((v.bounds.width - widest) / 2).rounded(), y: top,
+                             width: widest, height: 20)
+            v.addSubview(b)
+            top -= 24
+        }
+        return top - 6
     }
 
     /// The bordered "number of items blocked" style panel.

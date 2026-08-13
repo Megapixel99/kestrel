@@ -560,15 +560,13 @@ final class AddonsPopoverController: NSViewController {
         v.addSubview(l)
         y -= 30
 
-        for (i, choice) in BrowserWindowController.refreshChoices.enumerated() {
-            let b = NSButton(radioButtonWithTitle: choice.0, target: self,
-                             action: #selector(refreshPicked(_:)))
-            b.frame = NSRect(x: (v.bounds.width - 180) / 2, y: y, width: 180, height: 20)
-            b.tag = i
-            b.state = (browser?.currentTab?.refreshInterval == choice.1) ? .on : .off
-            v.addSubview(b)
-            y -= 24
-        }
+        // Centred on the widest label rather than on a 180 pt box: a radio button draws
+        // its dot at its own left edge, so an over-wide box parks the whole column left of
+        // where it looks like it should be.
+        let choices = BrowserWindowController.refreshChoices
+        let current = choices.firstIndex { browser?.currentTab?.refreshInterval == $0.1 } ?? 0
+        _ = AddonStyle.radioColumn(choices.map(\.0), selected: current, in: v, y: y,
+                                   target: self, action: #selector(refreshPicked(_:)))
 
         let note = NSTextField(wrappingLabelWithString:
             "A tab on a refresh timer is a live dashboard, so the scheduler pins it LIVE "
@@ -588,19 +586,13 @@ final class AddonsPopoverController: NSViewController {
             [("Then", ["Open in editor", "Save to file", "Copy to clipboard"],
               Prefs.shotThen, #selector(thenChanged(_:))),
              ("Format", ["PNG", "JPEG", "PDF"], Prefs.shotFormat, #selector(formatChanged(_:)))] {
-            let l = NSTextField(labelWithString: label)
-            l.frame = NSRect(x: 16, y: y + 2, width: 56, height: 18)
-            l.font = .systemFont(ofSize: 11)
-            l.textColor = .secondaryLabelColor
-            v.addSubview(l)
-            let p = NSPopUpButton(frame: NSRect(x: 76, y: y - 2,
-                                                width: v.bounds.width - 92, height: 26))
+            let p = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 0, height: 26))
             p.addItems(withTitles: options)
             p.selectItem(withTitle: initial)
             p.target = self
             p.action = sel
-            v.addSubview(p)
-            y -= 34
+            y = AddonStyle.formRow(label, control: p, in: v, y: y,
+                                   controlWidth: v.bounds.width - 92)
         }
         y -= 6
         for (title, sel) in [("Entire page", #selector(capFull)),

@@ -43,6 +43,13 @@ case "filters":
 case "darktest":
     DarkTest.run()
 case "layouttest":
+    // `layouttest <dir>` also writes a PNG of each add-ons pane there.
+    if args.count > 2 {
+        let d = URL(fileURLWithPath: args[2])
+        try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
+        LayoutTest.dumpDir = d
+        LayoutTest.dumpDark = args.contains("dark")
+    }
     LayoutTest.run()
 case "selftest":
     SelfTest.run()

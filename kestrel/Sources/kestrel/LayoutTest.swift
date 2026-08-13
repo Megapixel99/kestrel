@@ -15,6 +15,10 @@ enum LayoutTest {
         let detail: String
     }
 
+    /// Where to write PNGs of each layout, when asked. Reviewing the panes by eye
+    /// otherwise means clicking through six of them in the running browser.
+    static var dumpDir: URL?
+
     static func run() {
         var problems: [Problem] = []
         var checked = 0
@@ -26,12 +30,14 @@ enum LayoutTest {
         let vc = AddonsPopoverController(browser: browser)
         vc.showRoot()
         problems += audit(vc.view, context: "add-ons root", recurse: true)
+        dump(vc.view, as: "addons-root")
         checked += 1
 
         for addon in vc.addons {
             vc.openForTest(addon)
             problems += audit(vc.view, context: "add-ons: \(addon.name)",
                               recurse: true)
+            dump(vc.view, as: "addons-\(addon.id)")
             checked += 1
         }
 
@@ -98,6 +104,49 @@ enum LayoutTest {
         }
         print("\n\(problems.isEmpty ? "layout is clean" : "\(problems.count) layout problem(s)")")
         exit(problems.isEmpty ? 0 : 1)
+    }
+
+    /// A detached view draws almost nothing — text fields need a window to pick up an
+    /// appearance and a field editor — so the pane is hosted in an offscreen window for
+    /// the duration of the capture and handed straight back.
+    private static var host: NSWindow = {
+        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 400),
+                         styleMask: [.borderless], backing: .buffered, defer: false)
+        return w
+    }()
+
+    /// `layouttest <dir> dark` renders in dark mode. The panes are transparent — the
+    /// popover supplies the background — so the capture has to paint one, or dark mode
+    /// produces white text on white paper.
+    static var dumpDark = false
+
+    private static func dump(_ view: NSView, as name: String) {
+        guard let dir = dumpDir else { return }
+        let parent = view.superview
+        let frame = view.frame
+        let backing = BackgroundView(frame: NSRect(origin: .zero, size: view.bounds.size))
+        host.appearance = NSAppearance(named: dumpDark ? .darkAqua : .aqua)
+        host.setContentSize(view.bounds.size)
+        host.contentView = backing
+        backing.addSubview(view)
+        host.layoutIfNeeded()
+        host.displayIfNeeded()
+
+        defer {
+            view.removeFromSuperview()
+            host.contentView = NSView()
+            view.frame = frame
+            parent?.addSubview(view)
+        }
+        let view = backing
+        // Via PDF rather than cacheDisplay: the panes are layer-backed, and cacheDisplay
+        // captured the image views and dropped every label.
+        let pdf = view.dataWithPDF(inside: view.bounds)
+        guard let img = NSImage(data: pdf),
+              let tiff = img.tiffRepresentation,
+              let rep = NSBitmapImageRep(data: tiff),
+              let png = rep.representation(using: .png, properties: [:]) else { return }
+        try? png.write(to: dir.appendingPathComponent("\(name).png"))
     }
 
     /// A control must sit inside its parent, and must not sit on top of a sibling that
@@ -191,5 +240,12 @@ enum LayoutTest {
 
     private static func rect(_ r: NSRect) -> String {
         "(\(Int(r.minX)),\(Int(r.minY)) \(Int(r.width))x\(Int(r.height)))"
+    }
+
+    private final class BackgroundView: NSView {
+        override func draw(_ dirtyRect: NSRect) {
+            NSColor.windowBackgroundColor.setFill()
+            dirtyRect.fill()
+        }
     }
 }
