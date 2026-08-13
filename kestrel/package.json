@@ -1,0 +1,9 @@
+{
+  "name": "kestrel-web-assets",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Web-side dependencies for the Kestrel browser. Dark Reader is loaded by DarkReaderBridge.swift, which searches ~/.kestrel/darkreader.js and ./node_modules/darkreader/darkreader.js.",
+  "dependencies": {
+    "darkreader": "^4.9.128"
+  }
+}

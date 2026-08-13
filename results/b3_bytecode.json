@@ -1,0 +1,22 @@
+{
+  "payload_bytes": 50809280,
+  "n_procs": 16,
+  "reps": 3,
+  "median": {
+    "control": {
+      "sys_phys_delta": 245022720,
+      "footprint_mean": 8666112.0,
+      "rss_mean": 14613845.333333334
+    },
+    "heap": {
+      "sys_phys_delta": 679936000,
+      "footprint_mean": 59768832.0,
+      "rss_mean": 65481386.666666664
+    },
+    "mmap": {
+      "sys_phys_delta": 220889088,
+      "footprint_mean": 8770218.666666666,
+      "rss_mean": 27347626.666666668
+    }
+  }
+}

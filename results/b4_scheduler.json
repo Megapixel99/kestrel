@@ -1,0 +1,139 @@
+{
+  "config": {
+    "n_events": 4000,
+    "n_tabs": 80,
+    "budget_gb": 2.0,
+    "alpha": 1.1,
+    "seeds": [
+      11,
+      23,
+      37,
+      51,
+      67
+    ]
+  },
+  "median": {
+    "status quo (no eviction)": {
+      "peak_mb": 29006.9765625,
+      "mean_mb": 28375.971166748048,
+      "over_budget_pct": 99.8,
+      "final_tabs": 80,
+      "restores": 0,
+      "state_losses": 0,
+      "stall_s": 0.0,
+      "p50_ms": 0.0,
+      "p95_ms": 0.0,
+      "janky_restores": 0,
+      "reclaim_s": 0.0,
+      "oom_breaks": 0,
+      "capped_visit_pct": 0.0
+    },
+    "discard-LRU (browsers today)": {
+      "peak_mb": 8833.0244140625,
+      "mean_mb": 4364.36922241211,
+      "over_budget_pct": 97.1,
+      "final_tabs": 80,
+      "restores": 2464,
+      "state_losses": 2464,
+      "stall_s": 2710.4,
+      "p50_ms": 1100.0,
+      "p95_ms": 1100.0,
+      "janky_restores": 2464,
+      "reclaim_s": 0.0,
+      "oom_breaks": 0,
+      "capped_visit_pct": 0.0
+    },
+    "Kestrel (4-state, scored)": {
+      "peak_mb": 4511.321969985962,
+      "mean_mb": 2456.946102146387,
+      "over_budget_pct": 65.425,
+      "final_tabs": 80,
+      "restores": 1881,
+      "state_losses": 0,
+      "stall_s": 455.42,
+      "p50_ms": 150.0,
+      "p95_ms": 450.0,
+      "janky_restores": 1700,
+      "reclaim_s": 0.0,
+      "oom_breaks": 0,
+      "capped_visit_pct": 0.0
+    }
+  },
+  "sensitivity_warm_frac": {
+    "0.02": {
+      "peak_mb": 4253.302098274231,
+      "mean_mb": 2271.6038347582817,
+      "over_budget_pct": 52.725,
+      "final_tabs": 80,
+      "restores": 1823,
+      "state_losses": 0,
+      "stall_s": 337.27,
+      "p50_ms": 150.0,
+      "p95_ms": 450.0,
+      "janky_restores": 1227,
+      "reclaim_s": 0.0,
+      "oom_breaks": 0,
+      "capped_visit_pct": 0.0
+    },
+    "0.05": {
+      "peak_mb": 4306.322166442871,
+      "mean_mb": 2311.7815348014833,
+      "over_budget_pct": 53.45,
+      "final_tabs": 80,
+      "restores": 1839,
+      "state_losses": 0,
+      "stall_s": 438.96,
+      "p50_ms": 150.0,
+      "p95_ms": 450.0,
+      "janky_restores": 1629,
+      "reclaim_s": 0.0,
+      "oom_breaks": 0,
+      "capped_visit_pct": 0.0
+    },
+    "0.15": {
+      "peak_mb": 4511.321969985962,
+      "mean_mb": 2456.946102146387,
+      "over_budget_pct": 65.425,
+      "final_tabs": 80,
+      "restores": 1881,
+      "state_losses": 0,
+      "stall_s": 455.42,
+      "p50_ms": 150.0,
+      "p95_ms": 450.0,
+      "janky_restores": 1700,
+      "reclaim_s": 0.0,
+      "oom_breaks": 0,
+      "capped_visit_pct": 0.0
+    },
+    "0.3": {
+      "peak_mb": 4818.821678161621,
+      "mean_mb": 2714.6494486420156,
+      "over_budget_pct": 80.675,
+      "final_tabs": 80,
+      "restores": 1907,
+      "state_losses": 0,
+      "stall_s": 473.75,
+      "p50_ms": 150.0,
+      "p95_ms": 450.0,
+      "janky_restores": 1754,
+      "reclaim_s": 0.0,
+      "oom_breaks": 0,
+      "capped_visit_pct": 0.0
+    },
+    "0.5": {
+      "peak_mb": 5174.79833984375,
+      "mean_mb": 2874.6553178710938,
+      "over_budget_pct": 85.625,
+      "final_tabs": 80,
+      "restores": 1907,
+      "state_losses": 0,
+      "stall_s": 504.6,
+      "p50_ms": 150.0,
+      "p95_ms": 450.0,
+      "janky_restores": 1785,
+      "reclaim_s": 0.0,
+      "oom_breaks": 0,
+      "capped_visit_pct": 0.0
+    }
+  }
+}

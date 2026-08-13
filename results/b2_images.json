@@ -1,0 +1,167 @@
+[
+  {
+    "size": "thumb",
+    "w": 400,
+    "h": 225,
+    "format": "JPEG",
+    "encoded_bytes": 26090.0,
+    "rgba_bytes": 360000,
+    "amplification": 13.798390187811423,
+    "decode_ms": 0.8163125021383166,
+    "preview_bytes": 5600
+  },
+  {
+    "size": "thumb",
+    "w": 400,
+    "h": 225,
+    "format": "WEBP",
+    "encoded_bytes": 28049.0,
+    "rgba_bytes": 360000,
+    "amplification": 12.834682163356982,
+    "decode_ms": 2.1972499671392143,
+    "preview_bytes": 5600
+  },
+  {
+    "size": "thumb",
+    "w": 400,
+    "h": 225,
+    "format": "AVIF",
+    "encoded_bytes": 14866.5,
+    "rgba_bytes": 360000,
+    "amplification": 24.21551811118959,
+    "decode_ms": 3.314896021038294,
+    "preview_bytes": 5600
+  },
+  {
+    "size": "card",
+    "w": 800,
+    "h": 450,
+    "format": "JPEG",
+    "encoded_bytes": 88124.0,
+    "rgba_bytes": 1440000,
+    "amplification": 16.34061095728746,
+    "decode_ms": 2.7183129568584263,
+    "preview_bytes": 22400
+  },
+  {
+    "size": "card",
+    "w": 800,
+    "h": 450,
+    "format": "WEBP",
+    "encoded_bytes": 80071.0,
+    "rgba_bytes": 1440000,
+    "amplification": 17.984039165240848,
+    "decode_ms": 6.697291508316994,
+    "preview_bytes": 22400
+  },
+  {
+    "size": "card",
+    "w": 800,
+    "h": 450,
+    "format": "AVIF",
+    "encoded_bytes": 40108.5,
+    "rgba_bytes": 1440000,
+    "amplification": 35.90261415909346,
+    "decode_ms": 6.096708006225526,
+    "preview_bytes": 22400
+  },
+  {
+    "size": "content",
+    "w": 1600,
+    "h": 900,
+    "format": "JPEG",
+    "encoded_bytes": 272260.5,
+    "rgba_bytes": 5760000,
+    "amplification": 21.156208851449254,
+    "decode_ms": 10.164479026570916,
+    "preview_bytes": 89600
+  },
+  {
+    "size": "content",
+    "w": 1600,
+    "h": 900,
+    "format": "WEBP",
+    "encoded_bytes": 206010.0,
+    "rgba_bytes": 5760000,
+    "amplification": 27.959807776321536,
+    "decode_ms": 20.234957977663726,
+    "preview_bytes": 89600
+  },
+  {
+    "size": "content",
+    "w": 1600,
+    "h": 900,
+    "format": "AVIF",
+    "encoded_bytes": 108689.0,
+    "rgba_bytes": 5760000,
+    "amplification": 52.9952433088905,
+    "decode_ms": 11.988021025899798,
+    "preview_bytes": 89600
+  },
+  {
+    "size": "hero",
+    "w": 2560,
+    "h": 1440,
+    "format": "JPEG",
+    "encoded_bytes": 550665.5,
+    "rgba_bytes": 14745600,
+    "amplification": 26.777780703530546,
+    "decode_ms": 23.83304201066494,
+    "preview_bytes": 230400
+  },
+  {
+    "size": "hero",
+    "w": 2560,
+    "h": 1440,
+    "format": "WEBP",
+    "encoded_bytes": 362488.0,
+    "rgba_bytes": 14745600,
+    "amplification": 40.678863852044756,
+    "decode_ms": 42.05833305604756,
+    "preview_bytes": 230400
+  },
+  {
+    "size": "hero",
+    "w": 2560,
+    "h": 1440,
+    "format": "AVIF",
+    "encoded_bytes": 198397.5,
+    "rgba_bytes": 14745600,
+    "amplification": 74.3235171814161,
+    "decode_ms": 17.86312449257821,
+    "preview_bytes": 230400
+  },
+  {
+    "size": "4K",
+    "w": 3840,
+    "h": 2160,
+    "format": "JPEG",
+    "encoded_bytes": 990322.0,
+    "rgba_bytes": 33177600,
+    "amplification": 33.50183071768576,
+    "decode_ms": 50.81137496745214,
+    "preview_bytes": 518400
+  },
+  {
+    "size": "4K",
+    "w": 3840,
+    "h": 2160,
+    "format": "WEBP",
+    "encoded_bytes": 604564.0,
+    "rgba_bytes": 33177600,
+    "amplification": 54.87855710892478,
+    "decode_ms": 86.66777046164498,
+    "preview_bytes": 518400
+  },
+  {
+    "size": "4K",
+    "w": 3840,
+    "h": 2160,
+    "format": "AVIF",
+    "encoded_bytes": 325140.5,
+    "rgba_bytes": 33177600,
+    "amplification": 102.04081004980924,
+    "decode_ms": 38.95987500436604,
+    "preview_bytes": 518400
+  }
+]

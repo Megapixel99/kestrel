@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key>
+  <string>dev.kestrel.browser</string>
+  <key>CFBundleName</key>
+  <string>Kestrel</string>
+  <key>CFBundleDisplayName</key>
+  <string>Kestrel</string>
+  <key>CFBundleShortVersionString</key>
+  <string>1.0</string>
+  <key>CFBundleVersion</key>
+  <string>1</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>13.0</string>
+  <key>NSHighResolutionCapable</key>
+  <true/>
+  <!-- macOS refuses camera and microphone access outright without these strings,
+       and shows them verbatim in the permission prompt. -->
+  <key>NSCameraUsageDescription</key>
+  <string>Kestrel needs camera access so websites you allow, such as video calls, can use it.</string>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Kestrel needs microphone access so websites you allow, such as video calls, can use it.</string>
+  <!-- Continuity Camera (iPhone as a webcam) needs this or it is filtered out. -->
+  <key>NSCameraUseContinuityCameraDeviceType</key>
+  <true/>
+  <key>NSLocalNetworkUsageDescription</key>
+  <string>Kestrel uses the local network to load pages you visit.</string>
+</dict>
+</plist>

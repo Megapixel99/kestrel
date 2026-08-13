@@ -1,0 +1,11 @@
+# Real sites, mixed weight: docs pages, a wiki, news, a JS-heavy app.
+https://en.wikipedia.org/wiki/Web_browser
+https://en.wikipedia.org/wiki/Memory_management
+https://developer.mozilla.org/en-US/docs/Web/JavaScript
+https://developer.mozilla.org/en-US/docs/Web/API/Page_Visibility_API
+https://news.ycombinator.com
+https://example.com
+https://www.rust-lang.org
+https://go.dev
+https://webkit.org/blog/
+https://v8.dev/blog

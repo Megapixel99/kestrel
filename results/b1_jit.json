@@ -1,0 +1,77 @@
+{
+  "env": {
+    "N_FUNCS": "4000",
+    "WARM_CALLS": "600",
+    "IDLE_GCS": "20",
+    "IDLE_MS": "4000"
+  },
+  "reps": 3,
+  "results": {
+    "naive (no flushing)": {
+      "code_warm": 55226592,
+      "code_idle": 48743712,
+      "heap_warm": 77650232,
+      "heap_idle": 66099976,
+      "rss_warm": 469753856,
+      "rss_idle": 466432000,
+      "optimized": 500,
+      "sampled": 500,
+      "flags": [
+        "--no-flush-bytecode"
+      ]
+    },
+    "V8 default (today)": {
+      "code_warm": 54713240,
+      "code_idle": 48741328,
+      "heap_warm": 73883360,
+      "heap_idle": 66097520,
+      "rss_warm": 476717056,
+      "rss_idle": 475332608,
+      "optimized": 500,
+      "sampled": 500,
+      "flags": []
+    },
+    "+ flush baseline code": {
+      "code_warm": 55240376,
+      "code_idle": 48741944,
+      "heap_warm": 74228536,
+      "heap_idle": 66098184,
+      "rss_warm": 464527360,
+      "rss_idle": 462286848,
+      "optimized": 500,
+      "sampled": 500,
+      "flags": [
+        "--flush-baseline-code"
+      ]
+    },
+    "aggressive tier-down": {
+      "code_warm": 52239696,
+      "code_idle": 33286000,
+      "heap_warm": 71556904,
+      "heap_idle": 49637896,
+      "rss_warm": 451772416,
+      "rss_idle": 449404928,
+      "optimized": 500,
+      "sampled": 500,
+      "flags": [
+        "--stress-flush-code",
+        "--flush-baseline-code"
+      ]
+    },
+    "aggressive + compaction": {
+      "code_warm": 52673232,
+      "code_idle": 33287368,
+      "heap_warm": 76771992,
+      "heap_idle": 49639344,
+      "rss_warm": 530915328,
+      "rss_idle": 421916672,
+      "optimized": 500,
+      "sampled": 500,
+      "flags": [
+        "--stress-flush-code",
+        "--flush-baseline-code",
+        "--compact-on-every-full-gc"
+      ]
+    }
+  }
+}

@@ -1,0 +1,32 @@
+[
+  {
+    "warm_calls": 20,
+    "pct_optimized": 0.0,
+    "code_warm": 20001664,
+    "code_idle": 19248552
+  },
+  {
+    "warm_calls": 100,
+    "pct_optimized": 0.0,
+    "code_warm": 23554960,
+    "code_idle": 19248552
+  },
+  {
+    "warm_calls": 300,
+    "pct_optimized": 99.2,
+    "code_warm": 56542072,
+    "code_idle": 48590816
+  },
+  {
+    "warm_calls": 600,
+    "pct_optimized": 100.0,
+    "code_warm": 53933984,
+    "code_idle": 48738464
+  },
+  {
+    "warm_calls": 1200,
+    "pct_optimized": 100.0,
+    "code_warm": 57564352,
+    "code_idle": 48768672
+  }
+]

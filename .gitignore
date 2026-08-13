@@ -1,0 +1,20 @@
+# Swift build products
+kestrel/.build/
+kestrel/Kestrel.app/
+*.dSYM/
+
+# Vendored dependency — restore with `npm install` in kestrel/
+kestrel/node_modules/
+
+# Generated test fixtures
+kestrel/heavy/
+kestrel/payload.bin
+kestrel/urls_heavy.txt
+bench/b3_bytecode_cache/cache/
+
+# Python
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
