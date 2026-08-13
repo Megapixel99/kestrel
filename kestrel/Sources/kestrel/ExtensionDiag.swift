@@ -85,8 +85,14 @@ enum ExtensionDiag {
             print("tabs the add-on can see: \(ctx.openTabs.count), "
                   + "windows: \(ctx.openWindows.count), "
                   + "focused: \(ctx.focusedWindow == nil ? "none" : "yes")")
+            // An add-on may set its popup at runtime, so the answer right after load is
+            // not the final answer. Adblock Plus declares no default_popup and never sets
+            // one: clicking it dispatches browserAction.onClicked instead.
+            settle(3)
             print("action for tab: "
-                  + (ctx.action(for: tab).map { "\($0.label) popup=\($0.presentsPopup)" }
+                  + (ctx.action(for: tab).map {
+                        "\($0.label) popup=\($0.presentsPopup) "
+                        + "(no popup means a click fires browserAction.onClicked)" }
                      ?? "none"))
 
             // Static analysis says it *would* inject. This asks the page whether it did.

@@ -303,11 +303,23 @@ final class ExtensionRuntime: NSObject, WKWebExtensionControllerDelegate,
 
     func performAction(id: String, tab: Tab?, from view: NSView) {
         guard let ctx = contexts[id], let action = ctx.action(for: tab) else { return }
+        // The user did click, and a great deal of the WebExtension API is gated on an
+        // active user gesture. Not telling WebKit about it left add-ons whose click
+        // handler opens a tab or a window doing nothing at all.
+        if let tab { ctx.userGesturePerformed(in: tab) }
+
         if action.presentsPopup {
             present(action, from: view)
-        } else {
-            ctx.performAction(for: tab)
+            return
         }
+        // No popup: the click becomes a browserAction.onClicked event and whatever the
+        // add-on does with it is its business. Adblock Plus is like this. Saying so beats
+        // a button that appears to do nothing.
+        ctx.performAction(for: tab)
+        let name = ctx.webExtension.displayName ?? "This add-on"
+        let hasOptions = ctx.optionsPageURL != nil
+        browser?.flash("\(name) has no popup — sent it a toolbar click"
+                       + (hasOptions ? "; right-click for its options" : ""))
     }
 
     private func present(_ action: WKWebExtension.Action, from view: NSView) {
