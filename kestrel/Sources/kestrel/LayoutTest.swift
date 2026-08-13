@@ -27,6 +27,12 @@ enum LayoutTest {
         let browser = BrowserWindowController()
         defer { browser.window.close() }
 
+        // The Firefox Add-ons pane is empty unless something is installed, and an empty
+        // pane cannot overlap anything. A stub add-on makes the populated layout — the
+        // one with rows, switches and checkboxes — the version actually audited.
+        let stub = installStubExtension()
+        defer { if let stub { try? FileManager.default.removeItem(at: stub) } }
+
         let vc = AddonsPopoverController(browser: browser)
         vc.showRoot()
         problems += audit(vc.view, context: "add-ons root", recurse: true)
@@ -105,6 +111,7 @@ enum LayoutTest {
         }
 
         Prefs.verticalTabs = userLayout
+        if let stub { try? FileManager.default.removeItem(at: stub) }
 
         print("Layout check — \(checked) layouts\n")
         if problems.isEmpty {
@@ -129,6 +136,21 @@ enum LayoutTest {
     /// popover supplies the background — so the capture has to paint one, or dark mode
     /// produces white text on white paper.
     static var dumpDark = false
+
+    /// An unpacked add-on with a long name, so the row is audited at its widest.
+    private static func installStubExtension() -> URL? {
+        let dir = ExtensionStore.dir.appendingPathComponent("layouttest-stub")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let manifest = """
+        {"manifest_version": 2, "name": "Layout Test Add-on With A Long Name",
+         "version": "1.0.0", "permissions": ["storage", "<all_urls>"],
+         "sidebar_action": {"default_panel": "p.html"}}
+        """
+        guard (try? manifest.data(using: .utf8)?
+                .write(to: dir.appendingPathComponent("manifest.json"))) != nil
+        else { return nil }
+        return dir
+    }
 
     private static func dump(_ view: NSView, as name: String) {
         guard let dir = dumpDir else { return }
@@ -205,12 +227,17 @@ enum LayoutTest {
         }
 
         if recurse {
-            // Only descend into plain container views. AppKit controls own their internal
+            // Descend all the way, not one level. Detail panes nest their content in a
+            // body view inside the pane view, so a single level stopped exactly above
+            // every control that matters — and the pane reported clean while the install
+            // button was drawn across an add-on row.
+            //
+            // Only plain container views, though: AppKit controls own their internal
             // subviews and legitimately draw outside their own bounds — a slider's knob
             // overhangs its track by design — so descending into them tests Apple's
             // layout, not ours.
             for s in subs where isOurContainer(s) {
-                out += audit(s, context: context + " › " + describe(s), recurse: false)
+                out += audit(s, context: context + " › " + describe(s), recurse: true)
             }
         }
         return out
@@ -219,7 +246,8 @@ enum LayoutTest {
     /// A plain view we laid out ourselves, rather than an AppKit control.
     private static func isOurContainer(_ v: NSView) -> Bool {
         guard type(of: v) == NSView.self || v is URLBarView || v is TabStripView
-                || v is MemoryBar || v is AddonRow else { return false }
+                || v is MemoryBar || v is AddonRow || v is ExtensionRow
+        else { return false }
         return !(v is WKWebView)
     }
 
@@ -231,7 +259,8 @@ enum LayoutTest {
         // Custom views that paint their own content count too. Omitting these is what
         // let the first version of this test pass while the add-ons footer was drawing
         // straight over the last row — the exact bug it was written to catch.
-        if v is AddonRow || v is BarSliderView || v is MemoryBar || v is NSBox {
+        if v is AddonRow || v is ExtensionRow || v is BarSliderView || v is MemoryBar
+            || v is NSBox {
             return true
         }
         return false

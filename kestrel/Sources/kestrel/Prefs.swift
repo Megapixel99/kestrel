@@ -123,6 +123,22 @@ enum Prefs {
         enabledExtensions = s
     }
 
+    /// Whether an enabled add-on shows a button in the toolbar. Off means it is still
+    /// running — it only stops taking up nav bar width, and is opened from the add-ons
+    /// menu instead. Stored as an opt-out so a newly installed add-on appears.
+    static var toolbarHiddenExtensions: Set<String> {
+        get { Set(d.stringArray(forKey: "toolbarHiddenExtensions") ?? []) }
+        set { d.set(Array(newValue), forKey: "toolbarHiddenExtensions") }
+    }
+    static func isExtensionInToolbar(_ id: String) -> Bool {
+        !toolbarHiddenExtensions.contains(id)
+    }
+    static func setExtensionInToolbar(_ show: Bool, id: String) {
+        var s = toolbarHiddenExtensions
+        if show { s.remove(id) } else { s.insert(id) }
+        toolbarHiddenExtensions = s
+    }
+
     /// WebKit keys an extension's storage by `uniqueIdentifier`. Handing it a fresh UUID
     /// each launch would wipe the add-on's settings every time Kestrel started, so the
     /// first one generated is kept.

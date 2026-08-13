@@ -239,6 +239,9 @@ final class AddonsPopoverController: NSViewController {
 
         y = AddonStyle.tabs(["Filter", "Site list", "More"], selected: darkTab, in: v, y: y,
                             target: self, action: #selector(darkTabChanged(_:)))
+        // barSlider hangs its value caption 25 pt *above* the bar, so the first one needs
+        // room or it lands on the tab row.
+        y -= 10
 
         switch darkTab {
         case 1:
@@ -337,9 +340,12 @@ final class AddonsPopoverController: NSViewController {
         y = AddonStyle.statPanel([("built in", "\(ContentBlocker.ruleCount)"),
                                   ("filters.txt", "\(custom)")], in: v, y: y)
 
-        AddonStyle.wideButton("Reload filters.txt", in: v, y: y - 4, target: self,
+        // statPanel already returns a y clear of its box; subtracting more walked the
+        // button back up into it.
+        y -= 16
+        AddonStyle.wideButton("Reload filters.txt", in: v, y: y, target: self,
                               action: #selector(adblockReload))
-        AddonStyle.wideButton("Open ~/.kestrel", in: v, y: y - 38, target: self,
+        AddonStyle.wideButton("Open ~/.kestrel", in: v, y: y - 34, target: self,
                               action: #selector(openKestrelFolder))
 
         let note = NSTextField(wrappingLabelWithString:
@@ -660,19 +666,37 @@ final class AddonsPopoverController: NSViewController {
             y -= 34
         }
 
+        // One row per add-on: click it to run it, which is what makes hiding it from
+        // the toolbar a real option rather than a way to lose track of it.
         for ext in installed.prefix(4) {
             let on = Prefs.isExtensionEnabled(ext.id)
             let gaps = ExtensionStore.gaps(in: ext)
             var subtitle = "v\(ext.version) · MV\(ext.manifestVersion)"
             if let err = extensionLoadError(ext.id) {
                 subtitle = "failed: \(err)"
+            } else if !on {
+                subtitle += " · off"
+            } else if !Prefs.isExtensionInToolbar(ext.id) {
+                subtitle += " · hidden from toolbar"
             } else if !gaps.isEmpty {
                 subtitle += " · no \(gaps.joined(separator: ", "))"
             }
-            y = AddonStyle.toggleRow(ext.name, subtitle: subtitle, on: on, in: v, y: y,
-                                     target: self, action: #selector(extensionToggled(_:)),
-                                     tag: installed.firstIndex { $0.id == ext.id } ?? 0)
+
+            y -= 54
+            let row = ExtensionRow(frame: NSRect(x: 8, y: y, width: v.bounds.width - 16,
+                                                 height: 48))
+            row.configure(name: ext.name, subtitle: subtitle, enabled: on,
+                          inToolbar: Prefs.isExtensionInToolbar(ext.id))
+            row.onRun = { [weak self] anchor in self?.runExtension(ext, from: anchor) }
+            row.onToggle = { [weak self] want in self?.setExtension(ext, enabled: want) }
+            row.onToolbar = { [weak self] show in
+                Prefs.setExtensionInToolbar(show, id: ext.id)
+                self?.browser?.refreshExtensionButtons()
+                self?.showDetail(self!.addons.first { $0.id == "extensions" }!)
+            }
+            v.addSubview(row)
         }
+        y -= 26
 
         y -= 4
         AddonStyle.wideButton("Install add-on\u{2026}", in: v, y: y, target: self,
@@ -700,13 +724,19 @@ final class AddonsPopoverController: NSViewController {
         return MainActor.assumeIsolated { ExtensionRuntime.shared.loadErrors[id] }
     }
 
-    @objc private func extensionToggled(_ sender: NSSwitch) {
-        let installed = ExtensionStore.installed()
-        guard installed.indices.contains(sender.tag) else { return }
-        let ext = installed[sender.tag]
-        if sender.state == .on {
+    /// Runs the add-on's own action — its popup, or its click handler — from the menu.
+    private func runExtension(_ ext: ExtensionStore.Installed, from anchor: NSView) {
+        guard Prefs.isExtensionEnabled(ext.id) else {
+            browser?.flash("\(ext.name) is turned off")
+            return
+        }
+        browser?.openExtensionAction(id: ext.id, from: anchor)
+    }
+
+    private func setExtension(_ ext: ExtensionStore.Installed, enabled: Bool) {
+        if enabled {
             guard browser?.confirmPermissions(for: ext) == true else {
-                sender.state = .off
+                showDetail(addons.first { $0.id == "extensions" }!)
                 return
             }
             Prefs.setExtensionEnabled(true, id: ext.id)
@@ -714,6 +744,7 @@ final class AddonsPopoverController: NSViewController {
         } else {
             browser?.disableExtension(ext)
         }
+        showDetail(addons.first { $0.id == "extensions" }!)
     }
 
     @objc private func extensionInstall() {
@@ -918,4 +949,86 @@ final class AddonRow: NSView {
     override func mouseEntered(with e: NSEvent) { hovering = true }
     override func mouseExited(with e: NSEvent) { hovering = false }
     override func mouseDown(with e: NSEvent) { onOpen?() }
+}
+
+/// A row for one installed Firefox add-on: click the name to run it, a switch to turn it
+/// on or off, and a checkbox for whether it takes a slot in the toolbar.
+///
+/// The click target matters more than it looks. Hiding an add-on from the toolbar is only
+/// a real option if there is somewhere else to click it, otherwise "hidden" means "lost".
+final class ExtensionRow: NSView {
+    private let name = NSTextField(labelWithString: "")
+    private let subtitle = NSTextField(labelWithString: "")
+    private let onOff = NSSwitch()
+    private let toolbar = NSButton(checkboxWithTitle: "Toolbar", target: nil, action: nil)
+    private var hovering = false { didSet { needsDisplay = true } }
+
+    var onRun: ((NSView) -> Void)?
+    var onToggle: ((Bool) -> Void)?
+    var onToolbar: ((Bool) -> Void)?
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        name.frame = NSRect(x: 12, y: frame.height - 26, width: frame.width - 70, height: 18)
+        name.font = .systemFont(ofSize: 13, weight: .medium)
+        name.lineBreakMode = .byTruncatingTail
+        addSubview(name)
+
+        // Stops short of the Toolbar checkbox below-right of it rather than running the
+        // full width: the two share the row's second line.
+        subtitle.frame = NSRect(x: 12, y: frame.height - 44,
+                                width: frame.width - 12 - 78 - 8, height: 16)
+        subtitle.font = .systemFont(ofSize: 10.5)
+        subtitle.textColor = .secondaryLabelColor
+        subtitle.lineBreakMode = .byTruncatingTail
+        addSubview(subtitle)
+
+        onOff.frame = NSRect(x: frame.width - 52, y: frame.height - 30, width: 40, height: 22)
+        onOff.target = self
+        onOff.action = #selector(switched)
+        addSubview(onOff)
+
+        toolbar.frame = NSRect(x: frame.width - 92, y: 2,
+                               width: toolbar.fittingSize.width.rounded(.up), height: 18)
+        toolbar.frame.origin.x = frame.width - 12 - toolbar.frame.width
+        toolbar.font = .systemFont(ofSize: 10.5)
+        toolbar.target = self
+        toolbar.action = #selector(toolbarChanged)
+        addSubview(toolbar)
+    }
+    required init?(coder: NSCoder) { nil }
+
+    func configure(name n: String, subtitle s: String, enabled: Bool, inToolbar: Bool) {
+        name.stringValue = n
+        subtitle.stringValue = s
+        onOff.state = enabled ? .on : .off
+        toolbar.state = inToolbar ? .on : .off
+        toolbar.isEnabled = enabled
+        toolTip = enabled ? "Click to open \(n)" : "\(n) is turned off"
+    }
+
+    @objc private func switched() { onToggle?(onOff.state == .on) }
+    @objc private func toolbarChanged() { onToolbar?(toolbar.state == .on) }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard hovering else { return }
+        NSColor.labelColor.withAlphaComponent(0.07).setFill()
+        NSBezierPath(roundedRect: bounds.insetBy(dx: 2, dy: 2), xRadius: 6, yRadius: 6).fill()
+    }
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds,
+                                       options: [.mouseEnteredAndExited, .activeInKeyWindow,
+                                                 .inVisibleRect], owner: self))
+    }
+    override func mouseEntered(with e: NSEvent) { hovering = true }
+    override func mouseExited(with e: NSEvent) { hovering = false }
+
+    /// Only the name area runs the add-on; the controls handle their own clicks.
+    override func mouseDown(with e: NSEvent) {
+        let p = convert(e.locationInWindow, from: nil)
+        guard p.x < bounds.width - 60 else { return }
+        onRun?(self)
+    }
 }

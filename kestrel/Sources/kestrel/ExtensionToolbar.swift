@@ -12,7 +12,10 @@ extension BrowserWindowController {
         MainActor.assumeIsolated {
             extensionBar.subviews.forEach { $0.removeFromSuperview() }
 
+            // Hidden add-ons keep running; they just do not take nav bar width. They
+            // stay clickable from the add-ons menu.
             let actions = ExtensionRuntime.shared.actions(for: currentTab)
+                .filter { Prefs.isExtensionInToolbar($0.id) }
             let size: CGFloat = 30
             extensionBar.frame.size.width = CGFloat(actions.count) * size
             extensionBar.frame.origin.x =
@@ -64,6 +67,13 @@ extension BrowserWindowController {
             options.representedObject = id
             menu.addItem(options)
         }
+        let hide = NSMenuItem(title: "Remove from Toolbar",
+                              action: #selector(extensionHideFromToolbar(_:)),
+                              keyEquivalent: "")
+        hide.target = self
+        hide.representedObject = id
+        menu.addItem(hide)
+
         let off = NSMenuItem(title: "Turn Off", action: #selector(extensionTurnOff(_:)),
                              keyEquivalent: "")
         off.target = self
@@ -80,6 +90,23 @@ extension BrowserWindowController {
                 return
             }
             if !openExtensionPage(url) { flash("could not open the options page") }
+        }
+    }
+
+    @objc func extensionHideFromToolbar(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String else { return }
+        Prefs.setExtensionInToolbar(false, id: id)
+        refreshExtensionButtons()
+        let name = ExtensionStore.installed().first { $0.id == id }?.name ?? "Add-on"
+        flash("\(name) hidden — still running, open it from the add-ons menu")
+    }
+
+    /// Runs an add-on's action from somewhere other than its toolbar button, which is the
+    /// only way to reach one that has been hidden.
+    func openExtensionAction(id: String, from view: NSView) {
+        guard #available(macOS 15.4, *) else { return }
+        MainActor.assumeIsolated {
+            ExtensionRuntime.shared.performAction(id: id, tab: currentTab, from: view)
         }
     }
 
