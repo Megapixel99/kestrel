@@ -29,12 +29,12 @@ final class FindBar: NSView {
         for (title, sel) in [("Done", #selector(close)),
                              ("\u{203A}", #selector(findNext)),
                              ("\u{2039}", #selector(findPrevious))] {
-            let w: CGFloat = title == "Done" ? 56 : 30
-            x -= w
             let b = NSButton(title: title, target: self, action: sel)
+            b.bezelStyle = .rounded
+            let w = b.fittingSize.width.rounded(.up)
+            x -= w
             b.frame = NSRect(x: x, y: 4, width: w, height: 24)
             b.autoresizingMask = [.minXMargin]
-            b.bezelStyle = .rounded
             addSubview(b)
             x -= 4
         }

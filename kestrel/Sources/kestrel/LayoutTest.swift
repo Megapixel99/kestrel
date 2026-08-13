@@ -120,6 +120,17 @@ enum LayoutTest {
             }
         }
 
+        // A button narrower than its own title truncates to "Highl…", which is the third
+        // way a hand-laid-out toolbar goes wrong and is just as checkable as the other two.
+        for case let b as NSButton in subs where !b.title.isEmpty {
+            let need = b.fittingSize.width
+            if need > b.frame.width + 1 {
+                out.append(Problem(context: context,
+                                   detail: "\(describe(b)) is \(Int(b.frame.width)) pt wide "
+                                         + "but needs \(Int(need.rounded())) pt"))
+            }
+        }
+
         for i in 0..<subs.count {
             for j in (i + 1)..<subs.count {
                 let a = subs[i], b = subs[j]

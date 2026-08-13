@@ -29,13 +29,19 @@ final class ScriptManagerController: NSObject, NSTableViewDataSource, NSTableVie
         header.autoresizingMask = [.minYMargin]
         root.addSubview(header)
 
-        for (title, sel, x) in [("Open Folder", #selector(openFolder), CGFloat(600)),
-                                ("New Script", #selector(newScript), CGFloat(700))] {
+        // Right-anchored and sized to their titles: the hard-coded 96 pt truncated
+        // "Open Folder", and a hard-coded x only lines up at one window width.
+        var bx = root.bounds.width - 14
+        for (title, sel) in [("New Script", #selector(newScript)),
+                             ("Open Folder", #selector(openFolder))] {
             let b = NSButton(title: title, target: self, action: sel)
-            b.frame = NSRect(x: x, y: root.bounds.height - 36, width: 96, height: 26)
-            b.autoresizingMask = [.minXMargin, .minYMargin]
             b.bezelStyle = .rounded
+            let w = max(96, b.fittingSize.width.rounded(.up))
+            bx -= w
+            b.frame = NSRect(x: bx, y: root.bounds.height - 36, width: w, height: 26)
+            b.autoresizingMask = [.minXMargin, .minYMargin]
             root.addSubview(b)
+            bx -= 8
         }
 
         let scroll = NSScrollView(frame: NSRect(x: 0, y: 34, width: root.bounds.width,

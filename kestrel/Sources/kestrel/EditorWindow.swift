@@ -35,24 +35,25 @@ final class EditorWindowController: NSObject {
                           backing: .buffered, defer: false)
         super.init()
         window.title = "Edit screenshot — \(title)"
-        // The tool row is a fixed-width cascade — eleven buttons, eight swatches and a
-        // slider laid out left to right — so it has a real minimum. Declaring it stops the
-        // window being dragged narrower than its own contents.
-        window.contentMinSize = NSSize(width: 1100, height: 520)
 
         let root = NSView(frame: window.contentLayoutRect)
         root.autoresizingMask = [.width, .height]
         let H = root.bounds.height, W = root.bounds.width
 
         // --- tool row ---
+        // Widths come from the button, not from a character count. Estimating them as
+        // `name.count * k + c` was wrong in both directions at once: too narrow for the
+        // titles (every tool truncated) and too wide in total (the width slider ended past
+        // the window edge). The shortcut moved to the tooltip to buy back the room.
         var x: CGFloat = 10
         for (name, key, kind) in Self.tools {
-            let b = NSButton(title: "\(name)  \(key.uppercased())", target: self,
-                             action: #selector(pickTool(_:)))
-            b.frame = NSRect(x: x, y: H - 36, width: CGFloat(name.count) * 7 + 26, height: 26)
-            b.autoresizingMask = [.minYMargin]
+            let b = NSButton(title: name, target: self, action: #selector(pickTool(_:)))
             b.bezelStyle = .rounded
             b.font = .systemFont(ofSize: 11)
+            b.toolTip = "\(name) — press \(key.uppercased())"
+            b.frame = NSRect(x: x, y: H - 36, width: b.fittingSize.width.rounded(.up),
+                             height: 26)
+            b.autoresizingMask = [.minYMargin]
             b.tag = Self.tools.firstIndex { $0.2 == kind } ?? 0
             root.addSubview(b)
             toolButtons[kind] = b
@@ -89,12 +90,13 @@ final class EditorWindowController: NSObject {
                              ("Undo", #selector(undo)), ("Redo", #selector(redo)),
                              ("Delete", #selector(deleteLast)), ("Clear", #selector(clearAll))] {
             let b = NSButton(title: title, target: self, action: sel)
-            b.frame = NSRect(x: ax, y: H - 68, width: 82, height: 24)
-            b.autoresizingMask = [.minYMargin]
             b.bezelStyle = .rounded
             b.font = .systemFont(ofSize: 11)
+            b.frame = NSRect(x: ax, y: H - 68,
+                             width: max(82, b.fittingSize.width.rounded(.up)), height: 24)
+            b.autoresizingMask = [.minYMargin]
             root.addSubview(b)
-            ax += 86
+            ax += b.frame.width + 4
         }
         var rx = W - 10 - 76
         for (title, sel) in [("Save", #selector(save)), ("Copy", #selector(copyImage)),
@@ -133,6 +135,12 @@ final class EditorWindowController: NSObject {
         canvas.autoresizingMask = [.width, .height]
         canvas.image = image
         root.addSubview(canvas)
+
+        // The tool row is a left-to-right cascade of measured widths, so its minimum is
+        // whatever it happened to add up to. Reading it off the last control keeps the
+        // constraint correct when a tool is renamed or added, which a hard-coded number
+        // would not.
+        window.contentMinSize = NSSize(width: widthSlider.frame.maxX + 10, height: 520)
 
         window.contentView = root
         window.center()
