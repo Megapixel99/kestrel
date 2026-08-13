@@ -70,6 +70,19 @@ enum LayoutTest {
             checked += 1
         }
 
+        // The network panel, which is laid out by hand like the rest.
+        let net = NetworkWindowController()
+        defer { net.window.close() }
+        for width in [CGFloat(1100), net.window.contentMinSize.width] {
+            net.window.setContentSize(NSSize(width: width, height: 620))
+            net.window.layoutIfNeeded()
+            if let root = net.window.contentView {
+                problems += audit(root, context: "network panel @\(Int(width))",
+                                  recurse: true)
+            }
+            checked += 1
+        }
+
         // The find bar spans the web container, which is narrowest at the minimum window
         // size with the vertical tab sidebar showing: 900 - 260. 520 is tighter still.
         for width in [CGFloat(640), 520] {
@@ -166,6 +179,21 @@ enum LayoutTest {
                 out.append(Problem(context: context,
                                    detail: "\(describe(s)) escapes its parent "
                                          + "\(rect(s.frame)) vs \(rect(view.bounds))"))
+            }
+        }
+
+        // A scroll view whose document view has no size shows nothing at all — not even
+        // its own placeholder text. The network panel's header pane looked like it was
+        // failing to populate when it was simply zero by zero, and none of the other
+        // checks here could see it: a zero-sized view is filtered out as "not laid out
+        // yet" everywhere else.
+        for case let sv as NSScrollView in view.subviews {
+            let d = sv.documentView
+            if d == nil || d!.bounds.width < 1 || d!.bounds.height < 1 {
+                out.append(Problem(context: context,
+                                   detail: "NSScrollView has a "
+                                         + (d == nil ? "missing" : "zero-sized")
+                                         + " document view \(rect(sv.frame))"))
             }
         }
 

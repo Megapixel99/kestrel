@@ -82,10 +82,23 @@ final class NetworkWindowController: NSObject, NSTableViewDataSource, NSTableVie
         dScroll.autoresizingMask = [.width, .height]
         dScroll.hasVerticalScroller = true
         dScroll.borderType = .noBorder
+        // An NSTextView made with NSTextView() has a zero frame, and a zero-sized
+        // documentView draws nothing at all — not even its placeholder text. That is
+        // what made this pane look like it was failing to populate.
+        detail.frame = NSRect(origin: .zero, size: dScroll.contentSize)
+        detail.minSize = NSSize(width: 0, height: dScroll.contentSize.height)
+        detail.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude,
+                                height: CGFloat.greatestFiniteMagnitude)
+        detail.isVerticallyResizable = true
+        detail.isHorizontallyResizable = false
+        detail.autoresizingMask = [.width]
+        detail.textContainer?.containerSize =
+            NSSize(width: dScroll.contentSize.width, height: CGFloat.greatestFiniteMagnitude)
+        detail.textContainer?.widthTracksTextView = true
         detail.isEditable = false
+        detail.isSelectable = true
         detail.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
         detail.textContainerInset = NSSize(width: 10, height: 8)
-        detail.autoresizingMask = [.width]
         detail.string = "Select a request."
         dScroll.documentView = detail
         root.addSubview(dScroll)
@@ -122,7 +135,11 @@ final class NetworkWindowController: NSObject, NSTableViewDataSource, NSTableVie
         rows = NetworkMonitor.entries.filter {
             needle.isEmpty || $0.url.absoluteString.lowercased().contains(needle)
         }
+        let selected = table.selectedRow
         table.reloadData()
+        if rows.indices.contains(selected) {
+            table.selectRowIndexes([selected], byExtendingSelection: false)
+        }
         let t = NetworkMonitor.totals
         summary.stringValue =
             "\(rows.count) shown of \(t.count) requests · "
@@ -175,10 +192,15 @@ final class NetworkWindowController: NSObject, NSTableViewDataSource, NSTableVie
         return label
     }
 
-    @objc private func rowClicked() {
+    @objc private func rowClicked() { showSelection() }
+
+    func tableViewSelectionDidChange(_ notification: Notification) { showSelection() }
+
+    private func showSelection() {
         let r = table.selectedRow
         guard rows.indices.contains(r) else { return }
         detail.string = describe(rows[r])
+        detail.scrollToBeginningOfDocument(nil)
     }
 
     private func describe(_ e: Entry) -> String {
