@@ -35,17 +35,9 @@ enum LayoutTest {
 
         let vc = AddonsPopoverController(browser: browser)
         vc.showRoot()
-        problems += audit(vc.view, context: "add-ons root", recurse: true)
-        dump(vc.view, as: "addons-root")
+        problems += audit(vc.view, context: "add-ons", recurse: true)
+        dump(vc.view, as: "addons")
         checked += 1
-
-        for addon in vc.addons {
-            vc.openForTest(addon)
-            problems += audit(vc.view, context: "add-ons: \(addon.name)",
-                              recurse: true)
-            dump(vc.view, as: "addons-\(addon.id)")
-            checked += 1
-        }
 
         // --- the browser window itself, at its minimum size and larger ---
         for size in [NSSize(width: 900, height: 500), NSSize(width: 1500, height: 950)] {
@@ -77,30 +69,6 @@ enum LayoutTest {
             }
             checked += 1
         }
-
-        // --- the auxiliary windows, which are laid out by hand at a fixed size ---
-        // The editor's tool row derives each button's width from its title length and
-        // cascades x across three groups, so a renamed tool moves everything after it.
-        let editor = EditorWindowController(image: NSImage(size: NSSize(width: 800, height: 600)),
-                                            url: URL(string: "https://example.com"),
-                                            title: "layout test", browser: nil)
-        defer { editor.window.close() }
-        for width in [CGFloat(1180), editor.window.contentMinSize.width] {
-            editor.window.setContentSize(NSSize(width: width, height: 800))
-            editor.window.layoutIfNeeded()
-            if let root = editor.window.contentView {
-                problems += audit(root, context: "screenshot editor @\(Int(width))",
-                                  recurse: false)
-            }
-            checked += 1
-        }
-
-        let scripts = ScriptManagerController(browser: nil)
-        defer { scripts.window.close() }
-        if let root = scripts.window.contentView {
-            problems += audit(root, context: "userscript dashboard", recurse: true)
-        }
-        checked += 1
 
         // The find bar spans the web container, which is narrowest at the minimum window
         // size with the vertical tab sidebar showing: 900 - 260. 520 is tighter still.
@@ -246,8 +214,7 @@ enum LayoutTest {
     /// A plain view we laid out ourselves, rather than an AppKit control.
     private static func isOurContainer(_ v: NSView) -> Bool {
         guard type(of: v) == NSView.self || v is URLBarView || v is TabStripView
-                || v is MemoryBar || v is AddonRow || v is ExtensionRow
-        else { return false }
+                || v is MemoryBar || v is ExtensionRow else { return false }
         return !(v is WKWebView)
     }
 
@@ -259,8 +226,7 @@ enum LayoutTest {
         // Custom views that paint their own content count too. Omitting these is what
         // let the first version of this test pass while the add-ons footer was drawing
         // straight over the last row — the exact bug it was written to catch.
-        if v is AddonRow || v is ExtensionRow || v is BarSliderView || v is MemoryBar
-            || v is NSBox {
+        if v is ExtensionRow || v is MemoryBar || v is NSBox {
             return true
         }
         return false

@@ -11,10 +11,11 @@ it on WebKit.
 - **[RESULTS-ENGINE.md](RESULTS-ENGINE.md)** — what happened when the ladder was built on a
   real engine (WebKit), and which of the design's targets turned out to be unreachable from
   outside it.
-- **[kestrel/](kestrel/)** — the browser itself: ~8,900 lines of Swift, the tab ladder, the
-  scheduler, **real Firefox add-ons**, an ad blocker, dark mode, userscripts, screenshots
-  with an annotation editor, Bitwarden autofill, developer tools, and sixteen headless test
-  and diagnostic modes.
+- **[kestrel/](kestrel/)** — the browser itself: ~5,500 lines of Swift, the tab ladder, the
+  scheduler, **real Firefox add-ons**, developer tools, and eight headless test and
+  benchmark modes. It used to be ~10,000 lines, half of it imitations of extensions —
+  an ad blocker, dark mode, userscripts, a password manager, a screenshot tool. Once
+  WebKit's extension runtime made the real add-ons work, the imitations were deleted.
 - **[DEBUGGING.md](DEBUGGING.md)** — the implementation bugs that looked correct while
   being broken, including two I could not fix and said so.
 - **[BENCHMARKS.md](BENCHMARKS.md)** — every comparison in one place, regenerated from

@@ -34,9 +34,6 @@ final class Scheduler {
     /// session image; only STUB actually discards work.
     func floor(for tab: Tab) -> TabState {
         if tab.audible { return .live }
-        // A tab on a refresh timer is being watched, not stored. Freezing it would stop
-        // the thing the user asked for, so it holds LIVE and pays full price.
-        if tab.refreshInterval != nil { return .live }
         if tab.pinned { return .warm }
         if tab.hasUnsubmittedInput { return .cold }
         return .stub

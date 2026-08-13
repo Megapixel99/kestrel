@@ -38,16 +38,11 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
     var qrPanel: NSPanel?
     var qrImage: NSImage?
     var flashUntil = Date.distantPast
-    var pendingCreds: ([Bitwarden.Credential], String, Tab)?
-    var shotToClipboard = false
     var addonsPopover: NSPopover?
     var taskManager: DevTools.TaskManagerController?
     var consoleController: DevTools.ConsoleController?
     var viewportPreset = 0
     var findBar: FindBar?
-    var scriptManager: ScriptManagerController?
-    var capturePop: NSPopover?
-    var editors: [EditorWindowController] = []
     var recentlyClosed: [(url: URL, title: String, image: Data?)] = []
     var spinnerTimer: Timer?
 
@@ -157,9 +152,9 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
             navBar.addSubview(b)
         }
         rightIcon("wrench.adjustable", "\u{2692}", #selector(pageToolsMenu),
-                  "Page tools — dark mode, capture, auto-refresh")
+                  "Developer tools — inspector, task manager, console")
         rightIcon("puzzlepiece.extension", "\u{29C9}", #selector(addonsMenu),
-                  "Add-ons — userscripts, ad blocker, passwords")
+                  "Add-ons — install and manage Firefox extensions")
         rightIcon("line.3.horizontal", "\u{2630}", #selector(appMenu),
                   "Kestrel menu")
 
@@ -328,211 +323,18 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
 
     public var currentTab: Tab? { tabs.first { $0.id == foregroundId } }
 
-    @objc public func toggleDark() {
-        guard let tab = currentTab else { return }
-        tab.toggleDarkMode { [weak self] on in
-            self?.flash((on ? "dark mode on — " : "dark mode off — ")
-                        + DarkReaderBridge.modeDescription)
-        }
-    }
 
     // MARK: - screenshots
 
-    @objc public func toggleShotToClipboard() { shotToClipboard.toggle() }
 
-    /// Turns dark mode on for every page, now and in future sessions. Applies to open
-    /// tabs immediately rather than only to ones opened later.
-    @objc public func toggleDarkByDefault() {
-        Prefs.darkByDefault.toggle()
-        let on = Prefs.darkByDefault
-        for tab in tabs where tab.darkMode != on {
-            tab.toggleDarkMode()
-        }
-        flash(on ? "dark mode on by default — \(DarkReaderBridge.modeDescription)"
-                 : "dark mode default off")
-        refreshTabStrip()
-    }
 
-    @objc public func shotVisible() {
-        guard let wv = currentTab?.webView else { return }
-        flash("capturing visible area…")
-        Screenshot.captureVisible(wv) { [weak self] image, note in
-            self?.deliver(image, note: note)
-        }
-    }
 
-    @objc public func shotFullPage() {
-        guard let wv = currentTab?.webView else { return }
-        flash("capturing full page…")
-        Screenshot.captureFullPage(wv, progress: { [weak self] msg in
-            self?.flash(msg)
-        }) { [weak self] image, note in
-            self?.deliver(image, note: note)
-        }
-    }
 
-    @objc public func shotPDF() {
-        guard let tab = currentTab, let wv = tab.webView else { return }
-        flash("rendering PDF…")
-        Screenshot.capturePDF(wv) { [weak self] data, note in
-            guard let self else { return }
-            guard let data else { self.flash(note); return }
-            let panel = NSSavePanel()
-            panel.allowedContentTypes = [.pdf]
-            panel.nameFieldStringValue = Screenshot.suggestedFilename(for: tab.url, ext: "pdf")
-            panel.begin { resp in
-                guard resp == .OK, let url = panel.url else { return }
-                try? data.write(to: url)
-                self.flash("saved \(note)")
-            }
-        }
-    }
 
-    @objc public func shotRegion() {
-        guard let wv = currentTab?.webView else { return }
-        let overlay = RegionOverlay(frame: webContainer.bounds)
-        overlay.autoresizingMask = [.width, .height]
-        webContainer.addSubview(overlay)
-        window.makeFirstResponder(overlay)
-        flash("drag to select a region")
-        overlay.onFinish = { [weak self] rect in
-            guard let self else { return }
-            guard let rect else { self.flash("region capture cancelled"); return }
-            Screenshot.captureVisible(wv) { image, note in
-                guard let image,
-                      let cropped = Screenshot.crop(image, to: rect, viewSize: wv.bounds.size)
-                else { self.flash("region capture failed: \(note)"); return }
-                self.deliver(cropped, note: "region \(Int(rect.width))×\(Int(rect.height))")
-            }
-        }
-    }
 
-    /// Click an element to capture just that element, Longshot's "Pick element".
-    @objc public func shotElement() {
-        guard let wv = currentTab?.webView else { return }
-        flash("click an element to capture it — Esc to cancel")
-        let picker = RegionOverlay(frame: webContainer.bounds)
-        picker.autoresizingMask = [.width, .height]
-        picker.pickMode = true
-        webContainer.addSubview(picker)
-        window.makeFirstResponder(picker)
-        picker.onPick = { [weak self] point in
-            guard let self else { return }
-            guard let point else { self.flash("element capture cancelled"); return }
-            let js = """
-            (function () {
-              const el = document.elementFromPoint(\(point.x), \(point.y));
-              if (!el) return null;
-              const r = el.getBoundingClientRect();
-              return {x: r.left, y: r.top, w: r.width, h: r.height, tag: el.tagName};
-            })();
-            """
-            wv.evaluateJavaScript(js) { result, _ in
-                guard let d = result as? [String: Any],
-                      let x = d["x"] as? CGFloat, let y = d["y"] as? CGFloat,
-                      let w = d["w"] as? CGFloat, let h = d["h"] as? CGFloat,
-                      w > 1, h > 1 else { self.flash("no element there"); return }
-                Screenshot.captureVisible(wv) { image, note in
-                    guard let image,
-                          let cropped = Screenshot.crop(image,
-                                                        to: NSRect(x: x, y: y, width: w, height: h),
-                                                        viewSize: wv.bounds.size)
-                    else { self.flash("element capture failed: \(note)"); return }
-                    self.deliver(cropped,
-                                 note: "element \((d["tag"] as? String) ?? "") "
-                                       + "\(Int(w))×\(Int(h))")
-                }
-            }
-        }
-    }
 
-    /// Capture popover: what to capture, and what happens next.
-    @objc public func capturePopover(_ sender: NSView) {
-        let vc = NSViewController()
-        let v = NSView(frame: NSRect(x: 0, y: 0, width: 320, height: 300))
-        var y: CGFloat = 258
 
-        for (label, options, initial, sel) in
-            [("Then", ["Open in editor", "Save to file", "Copy to clipboard"],
-              Prefs.shotThen, #selector(shotThenChanged(_:))),
-             ("Format", ["PNG", "JPEG", "PDF"], Prefs.shotFormat,
-              #selector(shotFormatChanged(_:)))] {
-            let l = NSTextField(labelWithString: label)
-            l.frame = NSRect(x: 16, y: y, width: 60, height: 20)
-            l.textColor = .secondaryLabelColor
-            v.addSubview(l)
-            let pop = NSPopUpButton(frame: NSRect(x: 82, y: y - 4, width: 220, height: 26))
-            pop.addItems(withTitles: options)
-            pop.selectItem(withTitle: initial)
-            pop.target = self
-            pop.action = sel
-            v.addSubview(pop)
-            y -= 36
-        }
 
-        let sep = NSBox(frame: NSRect(x: 12, y: y, width: 296, height: 1))
-        sep.boxType = .separator
-        v.addSubview(sep)
-        y -= 12
-
-        for (title, sel) in [("Entire page", #selector(shotFullPage)),
-                             ("Visible area", #selector(shotVisible)),
-                             ("Select region", #selector(shotRegion)),
-                             ("Pick element", #selector(shotElement))] {
-            let b = NSButton(title: "  " + title, target: self, action: sel)
-            b.frame = NSRect(x: 12, y: y - 34, width: 296, height: 34)
-            b.bezelStyle = .rounded
-            b.alignment = .left
-            b.font = .systemFont(ofSize: 13)
-            v.addSubview(b)
-            y -= 38
-        }
-
-        vc.view = v
-        let pop = NSPopover()
-        pop.contentViewController = vc
-        pop.contentSize = v.frame.size
-        pop.behavior = .transient
-        capturePop = pop
-        pop.show(relativeTo: sender.bounds, of: sender, preferredEdge: .maxY)
-    }
-
-    @objc func shotThenChanged(_ p: NSPopUpButton) { Prefs.shotThen = p.titleOfSelectedItem ?? "" }
-    @objc func shotFormatChanged(_ p: NSPopUpButton) { Prefs.shotFormat = p.titleOfSelectedItem ?? "" }
-
-    private func deliver(_ image: NSImage?, note: String) {
-        guard let image else { flash(note); return }
-        capturePop?.close()
-        switch Prefs.shotThen {
-        case "Copy to clipboard":
-            Screenshot.copyToClipboard(image)
-            flash("copied to clipboard — \(note)")
-            return
-        case "Open in editor":
-            let ed = EditorWindowController(image: image, url: currentTab?.url,
-                                            title: currentTab?.title ?? "", browser: self)
-            editors.append(ed)
-            ed.show()
-            flash(note)
-            return
-        default: break
-        }
-        if shotToClipboard {
-            Screenshot.copyToClipboard(image)
-            flash("copied to clipboard — \(note)")
-            return
-        }
-        guard let png = Screenshot.png(image) else { flash("could not encode PNG"); return }
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [.png]
-        panel.nameFieldStringValue = Screenshot.suggestedFilename(
-            for: currentTab?.url ?? URL(string: "https://page")!, ext: "png")
-        panel.begin { [weak self] resp in
-            guard resp == .OK, let url = panel.url else { return }
-            try? png.write(to: url)
-            self?.flash("saved \(note) — \(png.count / 1024) KB")
-        }
-    }
 
     @objc func showQR() {
         guard let tab = currentTab,
@@ -577,15 +379,6 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
         ("Every 30s", 30), ("Every 60s", 60), ("Every 5m", 300),
     ]
 
-    @objc public func setRefresh(_ sender: NSMenuItem) {
-        guard let tab = currentTab else { return }
-        tab.refreshInterval = Self.refreshChoices[sender.tag].1
-        tab.lastRefresh = Date()
-        flash(tab.refreshInterval == nil
-              ? "auto-refresh off"
-              : "auto-refresh every \(Int(tab.refreshInterval!))s — tab pinned LIVE")
-        refreshTabStrip()
-    }
 
     /// Developer tools, behind the wrench — matching where Firefox puts them.
     @objc func pageToolsMenu(_ sender: NSButton) {
@@ -710,55 +503,9 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
         pop.show(relativeTo: sender.bounds, of: sender, preferredEdge: .maxY)
     }
 
-    /// Sites on the exclusion list get dark mode turned back off after they load. The
-    /// user script is attached when the web view is created, so a tab that later
-    /// navigates to an excluded host would otherwise stay themed.
-    func enforceDarkExclusion(for tab: Tab) {
-        guard let wv = tab.webView else { return }
-        guard Prefs.isDarkExcluded(host: tab.url.host) else { return }
-        wv.evaluateJavaScript(DarkReaderBridge.disableJS) { [weak self] _, _ in
-            tab.darkMode = false
-            self?.flash("dark mode is off for \(tab.url.host ?? "this site")")
-        }
-    }
 
-    @objc func toggleDarkExclusion() {
-        guard let tab = currentTab, let host = tab.url.host else { return }
-        let nowExcluded = !Prefs.isDarkExcluded(host: host)
-        Prefs.setDarkExcluded(nowExcluded, host: host)
-        if nowExcluded {
-            tab.webView?.evaluateJavaScript(DarkReaderBridge.disableJS, completionHandler: nil)
-            tab.darkMode = false
-            flash("\(host) added to the dark mode exclusion list")
-        } else {
-            tab.darkMode = true
-            tab.webView?.evaluateJavaScript(DarkReaderBridge.reapplyJS(), completionHandler: nil)
-            flash("\(host) removed from the exclusion list")
-        }
-    }
 
-    /// Re-apply Dark Reader's slider settings to the current page.
-    func applyDarkSettings() {
-        guard let wv = currentTab?.webView else { return }
-        wv.evaluateJavaScript(DarkReaderBridge.reapplyJS()) { [weak self] r, _ in
-            self?.flash((r as? String) == "applied"
-                        ? "dark settings applied" : "turn dark mode on first")
-        }
-    }
 
-    /// Per-site blocking: detach or reattach the compiled rules for this tab.
-    func applySiteBlocking() {
-        guard let tab = currentTab, let wv = tab.webView,
-              let host = tab.url.host else { return }
-        let controller = wv.configuration.userContentController
-        if Prefs.isBlockingEnabled(host: host) {
-            ContentBlocker.apply(to: controller)
-            flash("ad blocking enabled on \(host) — reload to take effect")
-        } else {
-            controller.removeAllContentRuleLists()
-            flash("ad blocking disabled on \(host) — reload to take effect")
-        }
-    }
 
     /// Application menu.
     @objc func appMenu(_ sender: NSButton) {
@@ -839,7 +586,6 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
         menu.addItem(.separator())
         add("Vertical Tabs", #selector(toggleVerticalTabs),
             state: Prefs.verticalTabs ? .on : .off)
-        add("Userscript Dashboard…", #selector(openScriptManager))
         add("Task Manager…", #selector(openTaskManager))
         menu.addItem(.separator())
         add("Quit Kestrel", #selector(NSApplication.terminate(_:)))
@@ -852,10 +598,6 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
                    in: sender)
     }
 
-    @objc func openScriptManager() {
-        if scriptManager == nil { scriptManager = ScriptManagerController(browser: self) }
-        scriptManager?.show()
-    }
 
     @objc func printPage() {
         guard let wv = currentTab?.webView else { return }
@@ -872,8 +614,8 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
                 self?.flash("could not archive this page"); return
             }
             let panel = NSSavePanel()
-            panel.nameFieldStringValue =
-                Screenshot.suggestedFilename(for: tab.url, ext: "webarchive")
+            let stem = tab.url.host?.replacingOccurrences(of: ".", with: "-") ?? "page"
+            panel.nameFieldStringValue = stem + ".webarchive"
             panel.begin { resp in
                 guard resp == .OK, let url = panel.url else { return }
                 try? data.write(to: url)
@@ -893,9 +635,6 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
         budgetChanged()
     }
 
-    @objc public func reloadBlocklist() {
-        ContentBlocker.loadCustomList { [weak self] _, note in self?.flash(note) }
-    }
 
     @objc func toggleBookmark() {
         guard let tab = currentTab, !NewTabPage.isNewTab(tab.url) else { return }
@@ -1051,11 +790,8 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
 
     func updateSecurityIndicator(for tab: Tab) {
         if NewTabPage.isNewTab(tab.url) { urlBar.security = .blank }
-        else if tab.url.scheme == "https" {
-            let rules = ContentBlocker.ruleCount
-                + (ContentBlocker.customStats?.blocked ?? 0)
-            urlBar.security = rules > 0 ? .blocked(rules) : .secure
-        } else { urlBar.security = .insecure }
+        else if tab.url.scheme == "https" { urlBar.security = .secure }
+        else { urlBar.security = .insecure }
     }
 
     func refreshTabStrip() {
@@ -1071,17 +807,7 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
 
     // MARK: - the loop that makes it a budget
 
-    /// Attach newly-compiled blocking rules to tabs that already exist.
-    func retrofitBlocker() {
-        for tab in tabs {
-            guard let wv = tab.webView else { continue }
-            ContentBlocker.apply(to: wv.configuration.userContentController)
-        }
-    }
 
-    func blockerReady(_ ok: Bool, rules: Int) {
-        flash(ok ? "ad blocker: \(rules) rules compiled" : "ad blocker failed to compile")
-    }
 
     func customBlocklistReady(_ note: String) { flash(note) }
 
@@ -1107,7 +833,6 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
     }
 
     func tick() {
-        for tab in tabs { tab.refreshIfDue() }
         sampleMemory()
         applyBudgetAndRefresh()
     }
@@ -1154,60 +879,9 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
 
     // MARK: - add-ons
 
-    @objc public func reloadUserScripts() {
-        flash("\(UserScriptStore.loadAll().count) userscript(s) loaded — reopen tabs to apply")
-    }
 
-    /// Bitwarden autofill. Explicit user action only, origin-gated, never submits.
-    @objc public func bitwardenFill() {
-        guard let tab = currentTab, let host = tab.url.host else { return }
-        guard tab.url.scheme == "https" else {
-            flash("autofill refused: page is not HTTPS"); return
-        }
-        switch Bitwarden.credentials(forHost: host) {
-        case .failure(let status):
-            flash(status.message)
-        case .success(let creds):
-            guard !creds.isEmpty else { flash("no Bitwarden entry matches \(host)"); return }
-            if creds.count == 1 { fill(creds[0], host: host, in: tab) }
-            else {
-                let menu = NSMenu(title: "Choose credential")
-                for (i, c) in creds.enumerated() {
-                    let item = NSMenuItem(title: "\(c.name) — \(c.username)",
-                                          action: #selector(pickCredential(_:)),
-                                          keyEquivalent: "")
-                    item.target = self; item.tag = i
-                    menu.addItem(item)
-                }
-                pendingCreds = (creds, host, tab)
-                menu.popUp(positioning: nil,
-                           at: NSPoint(x: window.frame.width - 260,
-                                       y: window.frame.height - 90),
-                           in: window.contentView)
-            }
-        }
-    }
 
-    @objc func pickCredential(_ sender: NSMenuItem) {
-        guard let (creds, host, tab) = pendingCreds, sender.tag < creds.count else { return }
-        fill(creds[sender.tag], host: host, in: tab)
-        pendingCreds = nil
-    }
 
-    private func fill(_ cred: Bitwarden.Credential, host: String, in tab: Tab) {
-        // The script re-checks the origin itself; if the page navigated between the
-        // vault query and this call it refuses rather than filling the wrong site.
-        tab.webView?.evaluateJavaScript(Bitwarden.fillScript(cred, expectedHost: host)) {
-            [weak self] result, _ in
-            switch result as? String {
-            case "filled":            self?.flash("filled \(cred.name) — review, then submit")
-            case "no-password-field": self?.flash("no password field found on this page")
-            case "origin-changed":    self?.flash("autofill aborted: page changed origin")
-            case "not-https":         self?.flash("autofill refused: page is not HTTPS")
-            default:                  self?.flash("autofill did not run")
-            }
-        }
-    }
 
     // MARK: - vertical tab list
 
@@ -1390,7 +1064,6 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
         placeholder.isHidden = true
         placeholderLabel.isHidden = true
         setLoading(false, for: webView)
-        enforceDarkExclusion(for: tab)
         updateNavButtons()
         refreshTabStrip()
     }
@@ -1488,18 +1161,7 @@ enum BrowserApp {
     static func run(startURL: URL? = nil) {
         let controller = BrowserWindowController()
         installMenu(target: controller)
-        // Compile the blocklist once; WebKit caches the compiled rules in its own store.
-        // Compilation is async. Opening tabs before it completes gives them no rule
-        // list at all -- which is exactly why the starter tabs showed ads.
-        ContentBlocker.compile { list in
-            controller.blockerReady(list != nil, rules: ContentBlocker.ruleCount)
-            controller.retrofitBlocker()
-            ContentBlocker.loadCustomList { custom, note in
-                controller.retrofitBlocker()
-                if custom != nil || note.hasPrefix("custom blocklist failed") {
-                    controller.customBlocklistReady(note)
-                }
-            }
+        DispatchQueue.main.async {
             if let startURL {
                 controller.openTab(url: startURL)
             } else if controller.tabs.isEmpty && !controller.restoreSession() {

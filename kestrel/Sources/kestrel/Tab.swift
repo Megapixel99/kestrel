@@ -40,11 +40,7 @@ final class Tab: NSObject {
 
     /// Auto-refresh interval in seconds, nil = off. A tab on a refresh timer is a live
     /// dashboard: demoting it defeats the point, so it gets a LIVE floor in the
-    /// scheduler -- and that costs real memory, which the UI shows.
-    var refreshInterval: TimeInterval?
-    var lastRefresh = Date()
     /// Seeded from the saved preference so a new tab opens dark when that is the default.
-    var darkMode: Bool = Prefs.darkByDefault
 
     /// Last measured footprint while LIVE. Measured, never estimated -- DESIGN.md §2
     /// requires bytes_recoverable to come from real numbers.
@@ -160,14 +156,11 @@ final class Tab: NSObject {
             let before = Tab.lastKnownPids
             let cfg = WKWebViewConfiguration()
             cfg.processPool = WKProcessPool()
-            // Declarative blocking + userscripts are attached per web view, so a tab
-            // restored from COLD comes back with them already applied.
             // WKWebView's stock UA stops after "(KHTML, like Gecko)" — no product
             // token at all — so sniffers cannot identify it and sites like Google Meet
             // refuse outright. Appending the Safari token completes it, which is
             // accurate: this really is WebKit.
             cfg.applicationNameForUserAgent = UserAgent.applicationName
-            ContentBlocker.apply(to: cfg)
             // Extensions attach per configuration, so a tab restored from COLD comes
             // back with the same add-ons the rest of the window has.
             if #available(macOS 15.4, *) {
@@ -175,15 +168,6 @@ final class Tab: NSObject {
                     ExtensionRuntime.apply(to: cfg)
                     ExtensionWeb.attach(to: cfg)
                 }
-            }
-            for script in UserScriptStore.loadAll()
-            where Prefs.isScriptEnabled(script.name) {
-                cfg.userContentController.addUserScript(script.wrapped())
-            }
-            if darkMode && !Prefs.isDarkExcluded(host: url.host) {
-                // At document start so a restored dark tab never flashes light.
-                cfg.userContentController.addUserScript(
-                    DarkReaderBridge.userScript() ?? DarkMode.script())
             }
             let wv = WKWebView(frame: container.bounds, configuration: cfg)
             wv.autoresizingMask = [.width, .height]
@@ -260,24 +244,7 @@ final class Tab: NSObject {
         }
     }
 
-    /// Reload if the refresh interval has elapsed. Returns true if it fired.
-    @discardableResult
-    func refreshIfDue(now: Date = Date()) -> Bool {
-        guard let interval = refreshInterval, state == .live, let wv = webView,
-              now.timeIntervalSince(lastRefresh) >= interval else { return false }
-        lastRefresh = now
-        wv.reload()
-        return true
-    }
 
-    func toggleDarkMode(_ done: ((Bool) -> Void)? = nil) {
-        darkMode.toggle()
-        // Prefers the real Dark Reader library when it is installed; falls back to the
-        // built-in filter mode otherwise.
-        webView?.evaluateJavaScript(DarkReaderBridge.effectiveToggleJS()) { result, _ in
-            done?(result as? Bool ?? self.darkMode)
-        }
-    }
 
     private func captureSnapshot(from wv: WKWebView) {
         let cfg = WKSnapshotConfiguration()

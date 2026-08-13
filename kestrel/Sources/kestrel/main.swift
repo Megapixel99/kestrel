@@ -24,24 +24,6 @@ case "bench":
         exit(2)
     }
     Benchmark.run(urlFile: args[2], budgetMB: args.count > 3 ? Int(args[3]) ?? 1500 : 1500)
-case "bisect":
-    Bisect.run(path: args.count > 2 ? args[2] : nil)
-case "overlap":
-    OverlapTest.run(url: args.count > 2 ? args[2] : "https://duckduckgo.com/?q=google+meet")
-case "darkab":
-    DarkAB.run(url: args.count > 2 ? args[2] : "https://cas.apu.edu/cas/login")
-case "darkpath":
-    DarkPath.run()
-case "diag":
-    PageDiag.run(urlString: args.count > 2 ? args[2] : "https://example.com")
-case "shottest":
-    ShotTest.run()
-case "adblocktest":
-    AdBlockTest.run()
-case "filters":
-    FilterTest.run(path: args.count > 2 ? args[2] : nil)
-case "darktest":
-    DarkTest.run()
 case "exttest":
     ExtensionTest.run()
 case "extscan":

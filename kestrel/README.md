@@ -37,8 +37,12 @@ memory bar segmented by tab state with the budget drawn across it, and a status 
 says explicitly when the budget is *unreachable* rather than silently sitting over it.
 
 **Everyday features:** find in page (⌘F), bookmarks (⌘D), history, session restore,
-reopen closed tab (⇧⌘T), zoom (⌘+/−/0), print (⌘P), save page as web archive, pop-up
-handling, and a search-or-navigate address bar.
+reopen closed tab (⇧⌘T), zoom (⌘+/−/0), print (⌘P), save page as web archive, a QR code
+for the current URL, pop-up handling, and a search-or-navigate address bar.
+
+Everything beyond that — ad blocking, dark mode, userscripts, password autofill,
+screenshots — is an add-on, and a real one. Kestrel used to ship imitations of all five;
+they were deleted once WebKit's extension runtime made the originals work.
 
 ## Firefox add-ons
 
@@ -62,44 +66,6 @@ add-ons in the current Firefox profile add **244 MB** to a 50 MB browser, becaus
 background page belongs to no tab and cannot be parked. That is a floor the budget has to
 account for.
 
-## Built-in add-ons
-
-The puzzle icon opens a popover listing Kestrel's built-in features in the shape browsers
-use for extensions, alongside any real add-ons installed. The built-in ones are not
-installable extensions and the UI says so.
-
-| | |
-|---|---|
-| **Ad blocker** | Declarative `WKContentRuleList`, per-site toggle. Compiled into WebKit rather than run in JavaScript, so it costs ~nothing per tab — the choice DESIGN.md §6 argues for. Point `~/.kestrel/filters.txt` at an Adblock Plus list to extend it. |
-| **Dark Reader** | Uses the real library (MIT) when installed, with brightness/contrast/sepia/grayscale and a **site exclusion list**, falling back to a CSS invert when not. |
-| **Userscripts** | Tampermonkey-shaped: `~/.kestrel/userscripts/*.user.js` with `@name`, `@match`, `@run-at`, plus a dashboard with enable toggles. |
-| **Bitwarden** | Autofill via the official `bw` CLI, and a password generator using `SecRandomCopyBytes` with rejection sampling. |
-| **Tab Reloader** | Per-tab auto-refresh. A refreshing tab is pinned LIVE by the scheduler and pays full price — the one feature here that *costs* memory. |
-| **Screenshot** | Entire page, visible area, region, element, or PDF, opening in an annotation editor. |
-
-### Screenshot capture
-
-Full-page capture flattens sticky headers before the descent, primes lazy images and
-re-measures, and **scales down anything over 80 megapixels rather than allocating it** — a
-50,000 px page at 2× would be ~1.6 GB of RGBA. The editor has box/ellipse/arrow/line/pen/
-text/step/highlight/blur/pixelate/redact, crop, undo/redo, and header/footer/watermark
-templates. Annotations stay vector until export, so undo is exact; blur and pixelate
-genuinely resample through Core Image, because an overlay you can peel off is not
-redaction.
-
-### Bitwarden setup
-
-```bash
-brew install bitwarden-cli && bw login
-export BW_SESSION="$(bw unlock --raw)"
-./make_app.sh && open Kestrel.app --args gui   # same shell
-```
-
-The master password never reaches Kestrel; the session key goes to `bw` through the child
-environment rather than argv, so it stays out of `ps`; nothing is persisted; a credential
-is only offered when the page's domain matches the URI on the vault item, over HTTPS, and
-only when asked; and filling never submits the form.
-
 ## Developer tools
 
 Behind the wrench, in the shape Firefox uses: **Task Manager** (per-tab state, memory,
@@ -115,19 +81,10 @@ Every mode below is a real check, not a smoke test.
 | `exttest` | Builds a Firefox add-on, packs it as an `.xpi`, installs it, and asserts its content script ran in a page and its background script answered |
 | `extscan <dirs>` | Hands every `.xpi` in a directory to WebKit and reports which load and what each loses |
 | `extmem <dirs>` | Measures what each add-on costs, one at a time, with background pages forced to run |
-| `selftest` | ~40 assertions: blocklist, userscript parsing, dark mode, QR, tab switching, prefs, password generator, user agent, per-site exclusions |
-| `layouttest [dir] [dark]` | Builds 16 layouts — every add-ons pane, both tab layouts, the screenshot editor, the userscript dashboard, the find bar — and fails on any control that escapes its parent, overlaps a sibling, or is narrower than its own title. Given a directory it also writes a PNG of every add-ons pane, so they can be reviewed without clicking through the running browser |
+| `selftest` | Tab switching, memory-read cost, the new tab page's identity, QR encoding, spinner state, user agent, layout preference |
+| `layouttest [dir] [dark]` | Builds the add-ons popover, the browser window at two sizes, both tab layouts and the find bar, and fails on any control that escapes its parent, overlaps a sibling, or is narrower than its own title. Given a directory it also writes a PNG of the popover, so it can be reviewed without clicking through the running browser |
 | `probe` | Spawns *n* tabs, maps each to its WebContent process, drives one through the ladder and reports what each rung costs |
 | `bench <urls> <budgetMB> <policy> <events>` | Loads real sites and replays an access trace under `none` / `discardlru` / `kestrel` |
-| `shottest` | Full-page capture against a page with a sticky header, asserting it appears once rather than once per band |
-| `adblocktest` | Loads a page and asserts specific requests actually fail, including a first-party ad path |
-| `darktest` | Asserts a live page's computed background actually goes dark |
-| `filters` | Converts an Adblock Plus list and makes WebKit compile the result |
-| `bisect [path]` | Compiles each converted rule alone to find exactly which one WebKit rejects |
-| `diag <url>` | Loads a page in four configurations (clean / dark / blocker / both) and attributes differences |
-| `overlap <url>` | Detects overlapping text blocks across the same four configurations |
-| `darkab <url>` | A/B tests Dark Reader timing strategies on one page |
-| `darkpath` | Reports which dark-mode path actually ran on a real load |
 
 ```bash
 ./run_bench.sh 800 40 urls_heavy.txt
@@ -135,9 +92,6 @@ Every mode below is a real check, not a smoke test.
 
 One policy per process invocation, deliberately: WebKit keeps released WebContent
 processes alive for minutes, so two policies in one process would contaminate each other.
-
-The last four exist because three separate bug reports turned out to need attribution
-rather than guesswork — and two of them exonerated Kestrel. See DEBUGGING.md §7.
 
 ## Things worth knowing before reading the code
 
@@ -156,15 +110,9 @@ an ordering.
 real work off-main. Getting this wrong dropped a quarter of frames while scrolling, and
 `selftest` asserts 1000 reads stay under 50 ms.
 
-**Content rules compile asynchronously.** Tabs created before compilation finishes get no
-blocking at all, so startup waits and `retrofitBlocker()` attaches rules to existing tabs.
-
 **An extension's background page is not a tab.** It has no place on the ladder, cannot be
 demoted without breaking the add-on, and so raises the floor rather than competing for the
 budget. Measure it with `extmem` before setting a budget on a machine with add-ons.
-
-**Third-party-only rules miss first-party ads.** Sites serving ads from their own origin
-(MDN's `/pong/`) are invisible to any rule carrying `load-type: third-party`.
 
 ## Layout
 
@@ -178,23 +126,13 @@ Sources/kestrel/
   MemoryBar.swift        the stacked budget bar and vertical tab rows
   URLBar.swift           address pill: security indicator, progress, QR, bookmark
   NewTabPage.swift       new tab page and the search-or-navigate rule
-  ContentBlocker.swift   declarative ad/tracker blocking
-  FilterList.swift       Adblock Plus -> WebKit rule conversion
-  DarkReaderBridge.swift real Dark Reader when installed, CSS invert when not
-  PageFeatures.swift     dark mode fallback, QR codes, userscript engine
-  Bitwarden.swift        credential autofill via the bw CLI
-  PasswordGenerator.swift
-  Screenshot.swift       capture engine: visible, full page, element, PDF
-  ScreenshotEditor.swift annotation model and canvas
-  EditorWindow.swift     the editor's toolbar and export
-  AddonsPopover.swift    the add-ons list and detail panes
-  AddonStyle.swift       shared components for those panes
-  BarSlider.swift        the filled-bar slider Dark Reader uses
+  QRCode.swift           QR code for the current URL
+  AddonsPopover.swift    the installed add-ons list
+  AddonStyle.swift       the one shared control it still needs
   DevTools.swift         task manager, console, page source, responsive mode
   Store.swift            bookmarks, history, session
   Prefs.swift            persisted settings
   FindBar.swift          find in page
-  ScriptManager.swift    userscript dashboard
   UserAgent.swift        the Safari product token WKWebView omits
   Extensions.swift       .xpi install, the WKWebExtension runtime, permissions
   ExtensionBridge.swift  Kestrel's tabs and window, described to that runtime

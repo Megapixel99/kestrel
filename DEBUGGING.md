@@ -229,3 +229,33 @@ noise as precision.
 plausible-looking table. The tell was not the negative row — it was the 723 MB baseline,
 a number I could have sanity-checked against the browser sitting in front of me before
 writing any of the analysis.
+
+---
+
+## 10. Six features deleted, and what the deletion proved
+
+Kestrel shipped an ad blocker, a dark mode, a userscript engine, a Bitwarden client, a tab
+reloader and a screenshot tool with an annotation editor — about 4,600 lines — because
+there was no extension runtime and those were the nearest thing. WebKit's runtime made all
+six available as real Firefox add-ons, so they were removed.
+
+Two things worth keeping from the exercise.
+
+**The tests that broke were the ones testing imitations.** `adblocktest`, `darktest`,
+`shottest`, `filters`, `bisect`, `diag`, `overlap`, `darkab`, `darkpath` — nine headless
+modes, all of them built to debug features that shipping add-ons now provide. The modes
+that survived (`probe`, `bench`, `extmem`, `layouttest`, `selftest`) are the ones about the
+browser's actual thesis: what memory costs and where it goes.
+
+**Deleting a feature is where you find out what depended on it.** `Scheduler.floor(for:)`
+had a case pinning auto-refreshing tabs to LIVE — a per-reason demotion floor, one of the
+design's own ideas, existing only for a built-in feature. The Tab Reloader add-on now
+reloads a tab through `browser.tabs.reload()`, which the scheduler sees as an ordinary
+visit. The floor is gone and the behaviour it protected is gone with it, which is the
+honest outcome: an add-on cannot ask the scheduler for special treatment, and DESIGN.md §2
+should not claim otherwise.
+
+**Lesson.** The count that matters after this is not lines removed. It is that the ad
+blocker was cited in DESIGN.md §6 as a measured architectural result — declarative rules
+cost ~nothing per tab — and that claim now rests on a benchmark whose code is deleted.
+Measurements outlive the code that produced them only if the write-up says so.

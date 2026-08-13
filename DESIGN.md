@@ -288,6 +288,11 @@ whole browser swapping.
 
 ## 6. Extensions
 
+> **Deleted (DEBUGGING.md §10)** — the built-in ad blocker this section argued for
+> was removed once WebKit's extension runtime made real Firefox add-ons work. The measured
+> result stands; the code that produced it is gone, and per-tab blocking cost is now
+> whatever the installed add-on charges. `extmem` measures that.
+
 Extensions are one of the largest real-world sources of browser bloat, and the cost is structural:
 a persistent background page lives forever, and a `webRequest` listener forces a live JS context in
 every tab.
