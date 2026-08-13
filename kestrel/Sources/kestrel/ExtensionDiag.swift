@@ -148,6 +148,56 @@ enum ExtensionDiag {
                 for e in parse.prefix(8) { print("  - \(e.localizedDescription)") }
             }
 
+            // Options pages are frequently a shell that a script fills in — ABP ships
+            // `<body hidden>` with an iframe whose src is set by options.js — so "blank"
+            // usually means a script failed, not that navigation did.
+            if let opts = ctx.optionsPageURL, let ocfg = ctx.webViewConfiguration {
+                let ov = WKWebView(frame: NSRect(x: 0, y: 0, width: 900, height: 700),
+                                   configuration: ocfg)
+                ov.load(URLRequest(url: opts))
+                settle(6)
+                var report: String?
+                wait(12) { done in
+                    ov.evaluateJavaScript("""
+                    (function () {
+                      var f = document.querySelector('iframe');
+                      var inner = 'n/a';
+                      if (f) {
+                        try {
+                          var d = f.contentDocument;
+                          inner = d ? ('url=' + d.URL + ' nodes=' + d.body.children.length
+                                       + ' text="' + (d.body.innerText || '').trim().slice(0, 60) + '"')
+                                    : 'contentDocument null (blocked)';
+                        } catch (e) { inner = 'threw: ' + e; }
+                      }
+                      return 'body hidden=' + (document.body ? document.body.hidden : '?')
+                           + ', iframe src=' + (f ? (f.getAttribute('src') || 'none') : 'no iframe')
+                           + ' | inner: ' + inner;
+                    })()
+                    """) { v, e in
+                        report = (v as? String) ?? e?.localizedDescription
+                        done()
+                    }
+                }
+                print("options page: \(report ?? "no answer")")
+
+                // Does the inner page load as a main frame? If it does, the problem is
+                // specific to subframe navigation inside an extension page.
+                let inner = opts.deletingLastPathComponent()
+                    .appendingPathComponent("desktop-options.html")
+                ov.load(URLRequest(url: inner))
+                settle(6)
+                var direct: String?
+                wait(12) { done in
+                    ov.evaluateJavaScript(
+                        "document.URL + ' nodes=' + document.body.children.length") { v, e in
+                        direct = (v as? String) ?? e?.localizedDescription
+                        done()
+                    }
+                }
+                print("inner page direct: \(direct ?? "no answer")")
+            }
+
             if ctx.errors.isEmpty {
                 print("runtime errors: none")
             } else {

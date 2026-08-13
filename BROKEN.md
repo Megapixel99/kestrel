@@ -60,6 +60,51 @@ reachable without a click, so what looked like it needed a real window did not.
 
 ---
 
+## 7. Adblock Plus's options page is blank
+
+**Severity:** medium — the add-on blocks ads, but its UI is unreachable.
+
+**Repro**
+
+```bash
+cd kestrel && ./.build/debug/kestrel extdiag adblock https://example.com/
+```
+
+**What is actually happening,** in order, because each step disproves the obvious guess:
+
+1. ABP has **no popup at all**. Its manifest declares `browser_action` with no
+   `default_popup`, and it never sets one (`popup=false` at load and 4 s later). A click
+   fires `browserAction.onClicked`. Not a bug.
+2. Its options page opens and *runs*: `body hidden=false, iframe src=desktop-options.html`.
+   `options.js` executed correctly.
+3. The blank is the **iframe**: `inner: url=about:blank nodes=0`.
+4. `desktop-options.html` loads fine as a main frame — `nodes=8`. So it is subframe
+   navigation specifically.
+5. **WebKit requires `web_accessible_resources` for an extension to frame its own page.**
+   Adding `web_accessible_resources` to a copy of ABP's manifest makes the iframe load
+   immediately. Firefox and Chrome do not require this for same-extension frames; WebKit's
+   reading is stricter.
+
+**Why it is not fixed by adding the entry automatically.** Two reasons, and the second is
+decisive:
+
+- In MV2, `web_accessible_resources` are fetchable by **any web page**. Marking an add-on's
+  pages web-accessible on its behalf widens its exposure, silently, on the user's behalf.
+  That is a security decision, not a compatibility shim.
+- It does not even produce a working UI. With the entry added, the iframe loads and says:
+  *"Your browser version is no longer supported. Please upgrade"*. ABP gates on browser
+  detection, and Kestrel's extension user agent is a hybrid — `AppleWebKit/605.1.15 (KHTML,
+  like Gecko) Gecko/20100101 Firefox/141.0` — that satisfies neither branch cleanly.
+
+**Where to start:** the version gate is the real blocker, so the UA is the lever, not WAR.
+Find what ABP parses (`desktop-options.js`, search for the unsupported-browser string) and
+whether a UA that reads as plain Firefox — dropping the AppleWebKit prefix, which needs
+`customUserAgent` on the web view rather than `applicationNameForUserAgent` — gets past it.
+If it does, the WAR question comes back, and should be answered as an explicit per-add-on
+opt-in with the exposure spelled out, not silently.
+
+---
+
 ## 4. Network panel: `timing` rows have no headers
 
 **Severity:** none — a documented limit of the platform, listed here so it is not

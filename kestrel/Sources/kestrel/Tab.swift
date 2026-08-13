@@ -172,7 +172,11 @@ final class Tab: NSObject {
 
     private func makeLive(in container: NSView) {
         if webView == nil, let cfg = extensionConfig {
-            cfg.applicationNameForUserAgent = UserAgent.applicationName
+            // An add-on's own page is an add-on page: it gets the same Firefox token the
+            // popup and background get. Handing it the Safari token — which this did —
+            // means one add-on sees two different browsers depending on which of its own
+            // pages is asking.
+            cfg.applicationNameForUserAgent = UserAgent.extensionApplicationName
             // A container tab gets its own cookie jar, cache and storage. This is WebKit's
             // own partition boundary, not a cosmetic one.
             // `container` is also the name of this function's NSView parameter, so the
