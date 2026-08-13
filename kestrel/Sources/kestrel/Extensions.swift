@@ -185,7 +185,17 @@ final class ExtensionRuntime: NSObject, WKWebExtensionControllerDelegate {
     static let shared = ExtensionRuntime()
 
     private(set) var controller = WKWebExtensionController(
-        configuration: .default())
+        configuration: ExtensionRuntime.configuration())
+
+    /// The controller's configuration decides what every extension page — background,
+    /// popup, options — is built from, including its user agent.
+    private static func configuration() -> WKWebExtensionController.Configuration {
+        let cfg = WKWebExtensionController.Configuration.default()
+        let web = cfg.webViewConfiguration ?? WKWebViewConfiguration()
+        web.applicationNameForUserAgent = UserAgent.extensionApplicationName
+        cfg.webViewConfiguration = web
+        return cfg
+    }
     private(set) var contexts: [String: WKWebExtensionContext] = [:]   // keyed by ext id
     private(set) var loadErrors: [String: String] = [:]
     weak var browser: BrowserWindowController?

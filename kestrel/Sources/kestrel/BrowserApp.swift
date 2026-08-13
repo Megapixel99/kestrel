@@ -729,6 +729,7 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
         nextId += 1
         tabs.append(tab)
         select(tab)
+        extensionsDidOpen(tab)
     }
 
     func closeTab(id: Int) {
@@ -740,6 +741,7 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
                                     ?? (closing.webView?.interactionState as? Data)))
             if recentlyClosed.count > 20 { recentlyClosed.removeFirst() }
         }
+        extensionsDidClose(closing)
         tabs[idx].demote(to: .stub)
         tabs.remove(at: idx)
         if foregroundId == id {
@@ -751,6 +753,7 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
     }
 
     func select(_ tab: Tab) {
+        let previous = currentTab
         let needsLoad = tab.state < .live
 
         for other in tabs where other.id != tab.id { other.webView?.removeFromSuperview() }
@@ -785,6 +788,7 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
 
         updateNavButtons()
         refreshTabStrip()
+        if previous?.id != tab.id { extensionsDidActivate(tab, previous: previous) }
         refreshExtensionButtons()   // per-tab badges and enabled state
     }
 
@@ -1038,6 +1042,10 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
     }
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        if let tab = tabs.first(where: { $0.webView === webView }) {
+            if let u = webView.url, !NewTabPage.isNewTab(u) { tab.url = u }
+            extensionsDidUpdate(tab, loading: true)
+        }
         refreshTabStrip()
     }
 
@@ -1064,8 +1072,10 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
         placeholder.isHidden = true
         placeholderLabel.isHidden = true
         setLoading(false, for: webView)
+        extensionsDidUpdate(tab, loading: false)
         updateNavButtons()
         refreshTabStrip()
+        refreshExtensionButtons()   // badges often change on load
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError e: Error) {

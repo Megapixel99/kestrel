@@ -133,6 +133,35 @@ enum ExtensionTest {
         check("the background script replied to it", reply == "pong",
               reply.map { $0.isEmpty ? "no reply" : $0 } ?? "no reply")
 
+        // Can the add-on see the browser at all? Every symptom of the tab events never
+        // being forwarded looks like something else: Dark Reader reports "This page is
+        // protected by browser", an ad blocker blocks nothing, a password manager finds
+        // no matching site. All of them are tabs.query() coming back empty.
+        var tabsSeen: String?
+        wait(seconds: 10) { done in
+            poll(wv, every: 0.5, until: 9,
+                 script: "document.getElementById('kestrel-test')?.dataset.tabs ?? ''") { v in
+                tabsSeen = v; done()
+            }
+        }
+        check("the add-on can see the open tab", tabsSeen?.contains("example.com") == true,
+              tabsSeen ?? "tabs.query returned nothing")
+
+        // And a tab opened after the add-on loaded, which is the case that was broken:
+        // tabs were announced once at load and never again.
+        browser.openTab(url: URL(string: "https://example.org/")!)
+        browser.currentTab?.webView?.loadHTMLString(
+            "<html><body>second</body></html>", baseURL: URL(string: "https://example.org/"))
+        var tabsAfter: String?
+        wait(seconds: 12) { done in
+            poll(wv, every: 0.5, until: 11,
+                 script: "document.getElementById('kestrel-test')?.dataset.tabs ?? ''",
+                 matching: "example.org") { v in tabsAfter = v; done() }
+        }
+        check("a tab opened later shows up too",
+              tabsAfter?.contains("example.org") == true,
+              tabsAfter ?? "never appeared")
+
         // The options page lives at webkit-extension://…, which only loads in a web view
         // built from the extension's own configuration — WebKit cancels the navigation in
         // any other. A plain tab showed nothing at all, with no error.
@@ -167,7 +196,7 @@ enum ExtensionTest {
       "name": "Kestrel Test Add-on",
       "version": "1.0",
       "description": "Injects a marker element and pings its background script.",
-      "permissions": ["storage", "<all_urls>"],
+      "permissions": ["storage", "tabs", "<all_urls>"],
       "background": { "scripts": ["background.js"], "persistent": false },
       "content_scripts": [
         { "matches": ["<all_urls>"], "js": ["content.js"], "run_at": "document_end" }
@@ -191,6 +220,13 @@ enum ExtensionTest {
       api.runtime.sendMessage({ ping: true }, function (response) {
         el.dataset.reply = (response && response.pong) ? 'pong' : 'no-reply';
       });
+      // Polled, not asked once: the point is whether tabs opened *after* this script
+      // ran are visible to the extension.
+      setInterval(function () {
+        api.runtime.sendMessage({ tabs: true }, function (r) {
+          if (r) el.dataset.tabs = String(r.count) + '|' + r.urls;
+        });
+      }, 500);
     })();
     """
 
@@ -199,6 +235,13 @@ enum ExtensionTest {
       var api = typeof browser !== 'undefined' ? browser : chrome;
       api.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
         if (msg && msg.ping) { sendResponse({ pong: true }); return true; }
+        if (msg && msg.tabs) {
+          api.tabs.query({}, function (tabs) {
+            sendResponse({ count: tabs.length,
+                           urls: tabs.map(function (t) { return t.url || '?'; }).join(' ') });
+          });
+          return true;
+        }
       });
     })();
     """
@@ -215,6 +258,7 @@ enum ExtensionTest {
     private static func poll(_ wv: WKWebView, every: TimeInterval, until deadline: TimeInterval,
                              script: String =
                                 "document.getElementById('kestrel-test')?.textContent ?? ''",
+                             matching: String? = nil,
                              found: @escaping (String?) -> Void) {
         var elapsed: TimeInterval = 0
         var timer: Timer?
@@ -222,7 +266,8 @@ enum ExtensionTest {
             elapsed += every
             wv.evaluateJavaScript(script) { v, _ in
                 let s = v as? String ?? ""
-                if !s.isEmpty {
+                let hit = matching.map { s.contains($0) } ?? !s.isEmpty
+                if hit {
                     t.invalidate(); timer = nil; found(s)
                 } else if elapsed >= deadline {
                     t.invalidate(); timer = nil; found(nil)

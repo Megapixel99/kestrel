@@ -256,3 +256,52 @@ extension BrowserWindowController {
         }
     }
 }
+
+/// Tab lifecycle, forwarded to every loaded extension.
+///
+/// WebKit's runtime does not watch the browser — it is told. `browser.tabs.query()` returns
+/// whatever these calls have established, so a tab that is never announced does not exist
+/// as far as an add-on is concerned. Announcing only at load time, which is what this did
+/// at first, meant every tab opened afterwards was invisible: Dark Reader could not
+/// identify the page and reported "This page is protected by browser".
+extension BrowserWindowController {
+
+    @available(macOS 15.4, *)
+    private var liveContexts: [WKWebExtensionContext] {
+        Array(MainActor.assumeIsolated { ExtensionRuntime.shared.contexts }.values)
+    }
+
+    func extensionsDidOpen(_ tab: Tab) {
+        guard #available(macOS 15.4, *) else { return }
+        MainActor.assumeIsolated { liveContexts.forEach { $0.didOpenTab(tab) } }
+    }
+
+    func extensionsDidClose(_ tab: Tab) {
+        guard #available(macOS 15.4, *) else { return }
+        MainActor.assumeIsolated {
+            liveContexts.forEach { $0.didCloseTab(tab, windowIsClosing: false) }
+        }
+    }
+
+    func extensionsDidActivate(_ tab: Tab, previous: Tab?) {
+        guard #available(macOS 15.4, *) else { return }
+        MainActor.assumeIsolated {
+            liveContexts.forEach {
+                $0.didActivateTab(tab, previousActiveTab: previous)
+                $0.didSelectTabs([tab])
+            }
+        }
+    }
+
+    /// A tab that navigates or finishes loading has changed in ways `tabs.onUpdated`
+    /// listeners are waiting for — which is how a content script gets re-applied to the
+    /// new page.
+    func extensionsDidUpdate(_ tab: Tab, loading: Bool) {
+        guard #available(macOS 15.4, *) else { return }
+        MainActor.assumeIsolated {
+            var props: WKWebExtension.TabChangedProperties = [.URL, .title, .loading]
+            if !loading { props.insert(.readerMode) }
+            liveContexts.forEach { $0.didChangeTabProperties(props, for: tab) }
+        }
+    }
+}

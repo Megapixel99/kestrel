@@ -28,6 +28,8 @@ case "exttest":
     ExtensionTest.run()
 case "extscan":
     ExtensionScan.run(paths: Array(args.dropFirst(2)))
+case "extdiag":
+    ExtensionDiag.run(args: Array(args.dropFirst(2)))
 case "extmem":
     ExtensionMemory.run(paths: Array(args.dropFirst(2)))
 case "layouttest":

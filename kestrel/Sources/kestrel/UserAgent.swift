@@ -31,4 +31,17 @@ enum UserAgent {
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/\(webKitBuild) "
         + "(KHTML, like Gecko) \(applicationName)"
     }
+
+    /// What an add-on's own pages should see.
+    ///
+    /// A Firefox add-on branches on the browser it thinks it is running in, and the
+    /// truncated WKWebView UA matches nothing — Dark Reader's `canInjectScript()` falls
+    /// through to "this page is protected" and does nothing at all. These are Firefox
+    /// add-ons; the Gecko-shaped branch is the one written for them, so their pages get
+    /// a Firefox token. Web pages still get the Safari one above, which is the truthful
+    /// answer for the engine actually rendering them.
+    static let firefoxVersion = "141.0"
+    static var extensionApplicationName: String {
+        "Gecko/20100101 Firefox/\(firefoxVersion)"
+    }
 }
