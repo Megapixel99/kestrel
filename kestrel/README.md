@@ -91,12 +91,15 @@ unpacks the add-on and hands it to WebKit.
 All 25 add-ons installed in the Firefox profiles on the development machine load, uBlock
 Origin, NoScript and Greasemonkey among them.
 
-**Ad blockers are the exception, and it is measured rather than assumed.** WebKit grants
-`webRequestBlocking` and does not honour it: a test add-on returning `{cancel: true}` from a
-blocking listener does not stop the request. `declarativeNetRequest` is the only blocking
-mechanism the runtime implements, so a Manifest V2 blocker — Adblock Plus, uBlock Origin 1.x
-— loads, runs, and blocks nothing. Use an MV3 blocker, and check `content rules: true` in
-`extdiag`. The permission dialog warns before you enable one that cannot work. What does *not* survive is the Gecko-only
+**Ad blockers are the exception, and it is measured rather than assumed.** No add-on blocks
+here, of either manifest version. `kestrel blocktest <add-on>` runs five tracker probes with
+a control and a self-check: WebKit grants `webRequestBlocking` without honouring it, and
+accepts `declarativeNetRequest` rulesets — `hasContentModificationRules` reports true —
+without applying them, including in a web view built from the controller's own
+configuration. uBO Lite, Manifest V3 with EasyList enabled, blocked 0 of 5 after three
+minutes. A `WKContentRuleList` compiled by the browser blocks the same probe every time,
+which is what makes the result trustworthy and also names the only mechanism that works.
+See [../BROKEN.md](../BROKEN.md) #7. What does *not* survive is the Gecko-only
 surface — sidebars, themes, container tabs, the `downloads`/`history`/`privacy` APIs — so
 each add-on is checked against that list and told to you **before** you enable it, along
 with the permissions it wants. Nothing is granted without that dialog.
@@ -121,6 +124,8 @@ Every mode below is a real check, not a smoke test.
 | `sessiontest` | Container cookie isolation, reader extraction, and: fills a form, parks the tab COLD, brings it back, and asserts the values return — plus the password is never stored, the memory page's numbers come from the scheduler, and a recorded request's headers are real |
 | `exttest` | Builds a Firefox add-on, packs it as an `.xpi`, installs it, and asserts its content script ran in a page and its background script answered |
 | `extscan <dirs>` | Hands every `.xpi` in a directory to WebKit and reports which load and what each loses |
+| `blocktest <add-on>` | Five tracker probes with a control run and a self-check, to answer whether an ad blocker actually blocks — nothing in the extension API reports it |
+| `extdiag <add-on> [url]` | What an add-on actually got: granted permissions, host access, background load, content rules, options page structure, and the UA its pages see |
 | `extmem <dirs>` | Measures what each add-on costs, one at a time, with background pages forced to run |
 | `selftest` | Tab switching, memory-read cost, the new tab page's identity, QR encoding, spinner state, user agent, layout preference |
 | `layouttest [dir] [dark]` | Builds the add-ons popover, the browser window at two sizes, both tab layouts and the find bar, and fails on any control that escapes its parent, overlaps a sibling, or is narrower than its own title. Given a directory it also writes a PNG of the popover, so it can be reviewed without clicking through the running browser |

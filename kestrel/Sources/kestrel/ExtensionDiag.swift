@@ -181,10 +181,31 @@ enum ExtensionDiag {
                 }
                 print("options page: \(report ?? "no answer")")
 
-                // Does the inner page load as a main frame? If it does, the problem is
-                // specific to subframe navigation inside an extension page.
+                // If the options page is a shell around an iframe, does that inner page
+                // load as a main frame? If it does, the problem is subframe navigation.
+                // The path comes from the page rather than being hardcoded — it was
+                // ABP's "desktop-options.html", which made every other add-on report a
+                // resource-not-found error that had nothing to do with it.
+                var innerPath: String?
+                wait(8) { done in
+                    ov.evaluateJavaScript(
+                        "(document.querySelector('iframe')||{}).getAttribute ? "
+                        + "(document.querySelector('iframe').getAttribute('src')||'') : ''"
+                    ) { v, _ in innerPath = (v as? String).flatMap { $0.isEmpty ? nil : $0 }
+                        done() }
+                }
+                guard let innerPath else {
+                    print("inner page: no iframe to check")
+                    if ctx.errors.isEmpty { print("runtime errors: none") }
+                    else {
+                        print("runtime errors:")
+                        for e in ctx.errors.prefix(8) { print("  - \(e.localizedDescription)") }
+                    }
+                    runtime.unload(ext.id)
+                    continue
+                }
                 let inner = opts.deletingLastPathComponent()
-                    .appendingPathComponent("desktop-options.html")
+                    .appendingPathComponent(innerPath)
                 ov.load(URLRequest(url: inner))
                 settle(6)
                 var direct: String?

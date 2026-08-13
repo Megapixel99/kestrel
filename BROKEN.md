@@ -60,40 +60,51 @@ reachable without a click, so what looked like it needed a real window did not.
 
 ---
 
-## 7. Adblock Plus cannot block ads here — and neither can any MV2 blocker
+## 7. No add-on can block ads in Kestrel, of either manifest version
 
-**Severity:** high for anyone expecting an ad blocker, and unfixable from this side.
+**Severity:** high, and it looks like a platform limit rather than a bug here.
 
-**Measured.** A purpose-built add-on registers a blocking `webRequest` listener returning
-`{cancel: true}`, and the request goes through anyway:
+**Repro**
 
-    NOTE  blocking webRequest: request went through
+```bash
+cd kestrel && ./.build/debug/kestrel blocktest ubolite 45
+```
 
-The permission is *granted* — `webRequestBlocking` appears in `granted API perms` — but
-WebKit does not honour the cancellation. Granting a permission string is not implementing
-the API. `declarativeNetRequest` is the only blocking mechanism WebKit's runtime supports.
+**Measured, with a control and a self-check.**
 
-**What that means.** Adblock Plus 4.43 is Manifest V2 and blocks entirely through
-`webRequestBlocking`, with no declarative rules at all (`content rules: false`). It loads,
-runs, gets everything it asks for, and cannot block a single request. The same applies to
-uBlock Origin 1.x and every other MV2 blocker in the profile — 24 of the 25 add-ons scanned
-are MV2.
+| | | |
+|---|---|---|
+| MV2 blocking `webRequest` | test add-on returns `{cancel:true}` | **request went through** |
+| MV3 `declarativeNetRequest` (uBO Lite, 6 enabled rulesets incl. EasyList) | 5 tracker probes | **0 of 5 blocked** |
+| …after 180 s for rule compilation | same | **0 of 5 blocked** |
+| …in a web view from the controller's own configuration | same | **loaded** |
+| `WKContentRuleList` compiled by Kestrel itself | same probe | **blocked** |
 
-**The fix is to use an MV3 blocker**, which blocks through `declarativeNetRequest`: uBlock
-Origin Lite, AdGuard MV3, Ghostery MV3. `extdiag` reports `content rules: true` for an
-add-on that can actually block, which is the thing to check.
+The last row is the self-check, and it is what makes the rest trustworthy: the probe detects
+blocking that is definitely happening, so "loaded" means the request really was not blocked.
 
-The permission dialog now warns before enabling: *"request blocking (MV2 blockers cannot
-block here)"*.
+WebKit **grants** `webRequestBlocking` without honouring it, and **accepts**
+declarativeNetRequest rulesets — `hasContentModificationRules` reports `true` — without
+applying them to any web view reachable through the public API, including one built from
+`WKWebExtensionController.Configuration.webViewConfiguration`.
 
-**Its options page is separately broken**, which was the original symptom and is a smaller
-problem: WebKit requires `web_accessible_resources` for an extension to frame its own page —
-stricter than Firefox or Chrome — and ABP frames `desktop-options.html` without declaring
-any. Adding the entry to a copy of its manifest makes the iframe load, then ABP reports
-*"Your browser version is no longer supported"* because of its own browser detection. Not
-applied automatically: MV2 `web_accessible_resources` are readable by any web page, so
-adding them on an add-on's behalf silently widens its exposure — and it still would not
-produce a working UI.
+**Corrections to earlier claims in this file.** I previously wrote that MV2 was the problem
+and an MV3 blocker was the fix. That was wrong, stated twice, and with more confidence than
+the evidence supported. The manifest version is not the discriminator.
+
+**What has not been ruled out**
+
+- WebKit may honour only *dynamic* rules (`declarativeNetRequest.updateDynamicRules`) and
+  not manifest-declared static rulesets. A test add-on that adds one dynamic rule for a
+  known URL would settle it, and is the obvious next experiment.
+- Safari implements this through its own content-blocker plumbing, which a host app may not
+  inherit. If so this is unfixable from here and should be recorded as such.
+
+**What does work, and it is worth stating plainly:** `WKContentRuleList` compiled by the
+browser blocks reliably — the self-check proves it every run. That is precisely the
+mechanism the deleted built-in ad blocker used. Restoring a native content blocker
+(Adblock-Plus-list → WKContentRuleList conversion, which `FilterList.swift` did) is the only
+demonstrated way to block ads in this browser. Deleting it removed the one thing that worked.
 
 ---
 
