@@ -24,6 +24,17 @@ extension Tab: WKWebExtensionTab {
 
     func isPinned(for context: WKWebExtensionContext) -> Bool { pinned }
 
+    // These returned false unconditionally, so an add-on asking about reader mode was
+    // told no on every page whether or not one was available.
+    func isReaderModeAvailable(for context: WKWebExtensionContext) -> Bool { readerAvailable }
+    func isReaderModeActive(for context: WKWebExtensionContext) -> Bool { readerActive }
+
+    func setReaderModeActive(_ active: Bool, for context: WKWebExtensionContext,
+                             completionHandler: @escaping ((any Error)?) -> Void) {
+        if active != readerActive { ExtensionRuntime.shared.browser?.toggleReader() }
+        completionHandler(nil)
+    }
+
     func isPlayingAudio(for context: WKWebExtensionContext) -> Bool { audible }
 
     func isLoadingComplete(for context: WKWebExtensionContext) -> Bool {

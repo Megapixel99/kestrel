@@ -126,6 +126,115 @@ enum SessionTest {
               !NewTabPage.isNewTab(AboutMemory.sentinel)
               && AboutMemory.isMemoryPage(AboutMemory.sentinel))
 
+        // --- containers: is the isolation real? ---
+        // Cosmetic containers are worse than none, so this sets a cookie in one and tries
+        // to read it in another. Same site, same window, same process pool.
+        if #available(macOS 14.0, *), ContainerStore.all.count >= 2 {
+            let a = ContainerStore.all[0], b = ContainerStore.all[1]
+            let site = URL(string: "https://example.com/")!
+
+            browser.openTab(url: site, container: a)
+            guard let tabA = browser.currentTab, let viewA = tabA.webView else {
+                finish(failures + 1)
+            }
+            viewA.loadHTMLString("<html><body>a</body></html>", baseURL: site)
+            settle(3)
+            run(viewA, "document.cookie = 'kestrel=containerA; path=/'; 'ok'")
+            settle(1)
+            var readA: String?
+            wait(10) { done in
+                viewA.evaluateJavaScript("document.cookie") { v, _ in
+                    readA = v as? String; done()
+                }
+            }
+            check("a cookie set in a container is readable there",
+                  readA?.contains("containerA") == true, readA ?? "nil")
+
+            browser.openTab(url: site, container: b)
+            guard let tabB = browser.currentTab, let viewB = tabB.webView else {
+                finish(failures + 1)
+            }
+            viewB.loadHTMLString("<html><body>b</body></html>", baseURL: site)
+            settle(3)
+            var readB: String?
+            wait(10) { done in
+                viewB.evaluateJavaScript("document.cookie") { v, _ in
+                    readB = v as? String; done()
+                }
+            }
+            check("...and NOT readable from another container",
+                  readB?.contains("containerA") != true,
+                  "\(b.name) sees: \(readB.map { $0.isEmpty ? "no cookies" : $0 } ?? "nil")")
+            check("the two containers have different data stores",
+                  ContainerStore.store(for: a) !== ContainerStore.store(for: b))
+            check("asking twice for one container returns the same store",
+                  ContainerStore.store(for: a) === ContainerStore.store(for: a))
+        }
+
+        // --- reader view, and what it costs ---
+        // The claim is that a reader document is a fraction of the page. Measured, not
+        // assumed: an article page with a pile of chrome around it, then the extraction.
+        let article = """
+        <html><body>
+          <nav><a href="/1">one</a><a href="/2">two</a><a href="/3">three</a></nav>
+          <aside class="ads">buy things</aside>
+          <article>
+            <h1>A Headline</h1>
+            <p>\(String(repeating: "Sentences of real prose that carry the article. ", count: 40))</p>
+            <p>\(String(repeating: "A second paragraph, equally wordy and equally real. ", count: 40))</p>
+            <script>var tracker = 1;</script>
+          </article>
+          <footer>footer links</footer>
+        </body></html>
+        """
+        browser.openTab(url: URL(string: "https://example.com/article")!)
+        guard let readTab = browser.currentTab, let readView = readTab.webView else {
+            finish(failures + 1)
+        }
+        readView.loadHTMLString(article, baseURL: URL(string: "https://example.com/article"))
+        settle(3)
+
+        var available: Bool?
+        wait(10) { done in
+            readView.evaluateJavaScript(ReaderView.availabilityScript) { v, _ in
+                available = v as? Bool; done()
+            }
+        }
+        check("an article page offers reader view", available == true)
+
+        var extracted: ReaderView.Article?
+        wait(10) { done in
+            readView.evaluateJavaScript(ReaderView.extractScript) { v, _ in
+                extracted = ReaderView.parse(v); done()
+            }
+        }
+        check("the article was extracted", extracted != nil,
+              extracted.map { "\($0.words) words, title \"\($0.title)\"" } ?? "nil")
+        if let a = extracted {
+            check("...keeping the headline", a.title == "A Headline", a.title)
+            check("...dropping the navigation and ads",
+                  !a.html.contains("buy things") && !a.html.contains("footer links"))
+            check("...dropping scripts", !a.html.lowercased().contains("<script"))
+            let page = ReaderView.page(a, url: URL(string: "https://example.com/article")!)
+            check("the reader document is self-contained",
+                  !page.contains("<script") && !page.contains("http-equiv"))
+        }
+
+        // A page that is not an article must not offer the button, or reader view ruins it.
+        browser.openTab(url: URL(string: "https://example.com/app")!)
+        if let appTab = browser.currentTab, let appView = appTab.webView {
+            appView.loadHTMLString("<html><body><div id=root>app</div></body></html>",
+                                   baseURL: URL(string: "https://example.com/app"))
+            settle(2)
+            var appAvailable: Bool?
+            wait(10) { done in
+                appView.evaluateJavaScript(ReaderView.availabilityScript) { v, _ in
+                    appAvailable = v as? Bool; done()
+                }
+            }
+            check("a non-article page does not offer it", appAvailable == false)
+        }
+
         // --- network monitor, against a real request the page makes ---
         NetworkMonitor.clear()
         browser.openTab(url: URL(string: "https://example.com/net")!)

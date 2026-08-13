@@ -43,6 +43,13 @@ From). **Protections** (wrench) reports what is guarding the page and, more usef
 is responsible for each item — WebKit's tracking prevention, Kestrel's own doing, or an
 installed add-on — and can clear a site's stored data.
 
+**Reader view** (toolbar, only on article pages) extracts the article and drops navigation,
+ads, scripts and web fonts. It is the one feature here that shrinks a tab without demoting
+it. **Container tabs** (hamburger → New Container Tab) give a tab its own cookie jar, cache
+and storage through `WKWebsiteDataStore(forIdentifier:)` — real partitioning, asserted by
+setting a cookie in one container and failing to read it in another. Containers are also the
+one thing WebKit's runtime refuses add-ons, so the browser has to provide them.
+
 **Session restore** keeps scroll position and unsent form contents, not just URLs —
 `interactionState` carries neither for a parked tab — writes every ten seconds rather than
 only at quit, and tells a crash from a clean exit by a flag file. Password fields are never
@@ -104,7 +111,7 @@ Every mode below is a real check, not a smoke test.
 
 | mode | what it does |
 |---|---|
-| `sessiontest` | Fills a form, parks the tab COLD, brings it back, and asserts the values return — plus the password is never stored, the memory page's numbers come from the scheduler, and a recorded request's headers are real |
+| `sessiontest` | Container cookie isolation, reader extraction, and: fills a form, parks the tab COLD, brings it back, and asserts the values return — plus the password is never stored, the memory page's numbers come from the scheduler, and a recorded request's headers are real |
 | `exttest` | Builds a Firefox add-on, packs it as an `.xpi`, installs it, and asserts its content script ran in a page and its background script answered |
 | `extscan <dirs>` | Hands every `.xpi` in a directory to WebKit and reports which load and what each loses |
 | `extmem <dirs>` | Measures what each add-on costs, one at a time, with background pages forced to run |
@@ -154,6 +161,11 @@ Sources/kestrel/
   URLBar.swift           address pill: security indicator, progress, QR, bookmark
   NewTabPage.swift       new tab page and the search-or-navigate rule
   QRCode.swift           QR code for the current URL
+  UrlBarSuggestions.swift history and bookmarks under the address bar
+  Migration.swift        import from Firefox, Chrome, Safari
+  Protections.swift      what is guarding the page, and who owns it
+  ReaderView.swift       article extraction and the reader document
+  Containers.swift       per-container cookie jars
   SessionStore.swift     scroll/form capture, restore, crash detection
   AboutMemory.swift      kestrel://memory, rendered from the scheduler
   NetworkMonitor.swift   request capture from three partial sources

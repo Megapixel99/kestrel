@@ -19,7 +19,7 @@ extension BrowserWindowController {
             let size: CGFloat = 30
             extensionBar.frame.size.width = CGFloat(actions.count) * size
             extensionBar.frame.origin.x =
-                navBar.bounds.width - 116 - extensionBar.frame.width
+                navBar.bounds.width - 149 - extensionBar.frame.width
 
             for (i, entry) in actions.enumerated() {
                 let b = NSButton(frame: NSRect(x: CGFloat(i) * size, y: 0,

@@ -53,6 +53,17 @@ final class Tab: NSObject {
     /// this the report arrives first and wipes exactly what is about to be restored.
     var restorePending = false
 
+    /// Reader view. `readerAvailable` is set from the page on load, so the toolbar button
+    /// only appears where the extraction would actually produce an article.
+    var readerAvailable = false
+    var readerActive = false
+    /// The page to return to when reader view is turned off.
+    var preReaderURL: URL?
+
+    /// The container this tab belongs to, or nil for the default jar. Fixed at creation:
+    /// moving a live tab between cookie jars is not something WebKit supports.
+    var container: Container?
+
     /// Auto-refresh interval in seconds, nil = off. A tab on a refresh timer is a live
     /// dashboard: demoting it defeats the point, so it gets a LIVE floor in the
     /// Seeded from the saved preference so a new tab opens dark when that is the default.
@@ -162,6 +173,15 @@ final class Tab: NSObject {
     private func makeLive(in container: NSView) {
         if webView == nil, let cfg = extensionConfig {
             cfg.applicationNameForUserAgent = UserAgent.applicationName
+            // A container tab gets its own cookie jar, cache and storage. This is WebKit's
+            // own partition boundary, not a cosmetic one.
+            // `container` is also the name of this function's NSView parameter, so the
+            // tab's own property is spelled out.
+            if #available(macOS 14.0, *), let jar = self.container {
+                cfg.websiteDataStore = MainActor.assumeIsolated {
+                    ContainerStore.store(for: jar)
+                }
+            }
             cfg.userContentController.addUserScript(SessionStore.captureScript())
             cfg.userContentController.addUserScript(NetworkMonitor.captureScript())
             let wv = WKWebView(frame: container.bounds, configuration: cfg)
@@ -178,6 +198,15 @@ final class Tab: NSObject {
             // refuse outright. Appending the Safari token completes it, which is
             // accurate: this really is WebKit.
             cfg.applicationNameForUserAgent = UserAgent.applicationName
+            // A container tab gets its own cookie jar, cache and storage. This is WebKit's
+            // own partition boundary, not a cosmetic one.
+            // `container` is also the name of this function's NSView parameter, so the
+            // tab's own property is spelled out.
+            if #available(macOS 14.0, *), let jar = self.container {
+                cfg.websiteDataStore = MainActor.assumeIsolated {
+                    ContainerStore.store(for: jar)
+                }
+            }
             cfg.userContentController.addUserScript(SessionStore.captureScript())
             cfg.userContentController.addUserScript(NetworkMonitor.captureScript())
             // Extensions attach per configuration, so a tab restored from COLD comes

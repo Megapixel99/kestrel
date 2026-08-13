@@ -34,6 +34,7 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
     var timer: Timer?
     private var sampling = false
     var backButton: NSButton?
+    var readerButton: NSButton?
     var forwardButton: NSButton?
     var qrPanel: NSPanel?
     var qrImage: NSImage?
@@ -127,7 +128,10 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
 
         // Three grouped menus on the right, as in the reference: page tools, add-ons,
         // and the application menu.
-        let rightW: CGFloat = 108
+        // Four icons now: reader, wrench, add-ons, menu. Adding the reader button
+        // without widening this ran the hamburger 13 pt past the window edge, which
+        // layouttest caught.
+        let rightW: CGFloat = 141
         urlBar = URLBarView(frame: NSRect(x: x + 6, y: navY + 7,
                                           width: W - x - rightW - 22, height: 28))
         urlBar.autoresizingMask = [.width]
@@ -156,6 +160,15 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
             bx += 33
             navBar.addSubview(b)
         }
+        readerButton = Toolbar.iconButton(symbol: "doc.plaintext", fallback: "\u{2261}",
+                                          tip: "Reader view", size: 15,
+                                          target: self, action: #selector(toggleReader))
+        readerButton?.frame = NSRect(x: bx, y: navY + 8, width: 30, height: 26)
+        readerButton?.autoresizingMask = [.minXMargin]
+        readerButton?.isHidden = true
+        if let readerButton { navBar.addSubview(readerButton) }
+        bx += 33
+
         rightIcon("wrench.adjustable", "\u{2692}", #selector(pageToolsMenu),
                   "Developer tools — inspector, task manager, console")
         rightIcon("puzzlepiece.extension", "\u{29C9}", #selector(addonsMenu),
@@ -593,6 +606,23 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
         add("    currently \(Int((currentTab?.webView?.pageZoom ?? 1) * 100))%", nil,
             enabled: false)
         menu.addItem(.separator())
+        if ContainerStore.isSupported {
+            let cItem = NSMenuItem(title: "New Container Tab", action: nil, keyEquivalent: "")
+            let cMenu = NSMenu()
+            for (i, c) in ContainerStore.all.enumerated() {
+                let item = NSMenuItem(title: c.name, action: #selector(newContainerTab(_:)),
+                                      keyEquivalent: "")
+                item.target = self
+                item.tag = i
+                let dot = NSImage(size: NSSize(width: 10, height: 10), flipped: false) { r in
+                    c.color.setFill(); NSBezierPath(ovalIn: r).fill(); return true
+                }
+                item.image = dot
+                cMenu.addItem(item)
+            }
+            cItem.submenu = cMenu
+            menu.addItem(cItem)
+        }
         add("Vertical Tabs", #selector(toggleVerticalTabs),
             state: Prefs.verticalTabs ? .on : .off)
         add("Memory…", #selector(openMemoryPage))
@@ -786,8 +816,9 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
                                          budgetSlider.doubleValue / 1024)
     }
 
-    func openTab(url: URL) {
+    func openTab(url: URL, container: Container? = nil) {
         let tab = Tab(id: nextId, url: url)
+        tab.container = container
         nextId += 1
         tabs.append(tab)
         select(tab)
@@ -854,6 +885,7 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
         refreshTabStrip()
         if previous?.id != tab.id { extensionsDidActivate(tab, previous: previous) }
         refreshExtensionButtons()   // per-tab badges and enabled state
+        updateReaderButton()
     }
 
     func updateSecurityIndicator(for tab: Tab) {
@@ -869,7 +901,9 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
                               title: $0.title.isEmpty ? "New Tab" : $0.title,
                               state: $0.state, bytes: $0.currentBytes,
                               isCurrent: $0.id == foregroundId, pinned: $0.pinned,
-                              isLoading: $0.isLoading)
+                              isLoading: $0.isLoading,
+                              containerColor: $0.container?.color,
+                              containerName: $0.container?.name)
         }
     }
 
@@ -961,6 +995,51 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
                 }
             }
         }
+    }
+
+    func updateReaderButton() {
+        readerButton?.isHidden = !(currentTab?.readerAvailable ?? false)
+        readerButton?.contentTintColor =
+            (currentTab?.readerActive ?? false) ? .controlAccentColor : nil
+    }
+
+    /// Reader view. Turning it on replaces the document with the extracted article, which
+    /// is a fraction of the page — the only feature here that shrinks a tab without
+    /// demoting it.
+    @objc func toggleReader() {
+        guard let tab = currentTab, let wv = tab.webView else { return }
+        if tab.readerActive {
+            tab.readerActive = false
+            if let back = tab.preReaderURL {
+                tab.url = back
+                wv.load(URLRequest(url: back))
+            } else {
+                wv.reload()
+            }
+            updateReaderButton()
+            return
+        }
+        wv.evaluateJavaScript(ReaderView.extractScript) { [weak self] raw, _ in
+            guard let article = ReaderView.parse(raw) else {
+                self?.flash("no article found on this page")
+                tab.readerAvailable = false
+                self?.updateReaderButton()
+                return
+            }
+            tab.preReaderURL = tab.url
+            tab.readerActive = true
+            wv.loadHTMLString(ReaderView.page(article, url: tab.url), baseURL: tab.url)
+            self?.flash("reader view — \(article.words) words")
+            self?.updateReaderButton()
+        }
+    }
+
+    @objc func newContainerTab(_ sender: NSMenuItem) {
+        let all = ContainerStore.all
+        guard all.indices.contains(sender.tag) else { return }
+        let c = all[sender.tag]
+        openTab(url: NewTabPage.url(), container: c)
+        flash("\(c.name) container — its own cookies, cache and storage")
     }
 
     @objc func openNetworkPanel() {
@@ -1225,6 +1304,14 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
             tab.restorePending = false
         }
         extensionsDidUpdate(tab, loading: false)
+        // Is this an article? Asked on every load, so the reader button is only offered
+        // where it would work.
+        if !tab.readerActive {
+            webView.evaluateJavaScript(ReaderView.availabilityScript) { [weak self] v, _ in
+                tab.readerAvailable = (v as? Bool) ?? false
+                if tab.id == self?.foregroundId { self?.updateReaderButton() }
+            }
+        }
         updateNavButtons()
         refreshTabStrip()
         refreshExtensionButtons()   // badges often change on load

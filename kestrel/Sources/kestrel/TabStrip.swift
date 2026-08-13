@@ -16,6 +16,11 @@ final class TabStripView: NSView {
         let isCurrent: Bool
         let pinned: Bool
         var isLoading: Bool = false
+        /// The container's colour, drawn as a stripe along the top of the tab. Without it
+        /// a container tab is indistinguishable from an ordinary one, which defeats the
+        /// point of keeping contexts apart.
+        var containerColor: NSColor? = nil
+        var containerName: String? = nil
     }
 
     /// Advanced by the controller only while a load is in flight, so an idle browser
@@ -84,6 +89,15 @@ final class TabStripView: NSView {
                 path.lineWidth = 1; path.stroke()
             } else if hoverId == item.id {
                 NSColor.labelColor.withAlphaComponent(0.08).setFill(); path.fill()
+            }
+
+            // Container stripe along the top edge, the way Firefox marks one.
+            if let c = item.containerColor {
+                let inset = f.rect.insetBy(dx: 1, dy: 3)
+                let stripe = NSRect(x: inset.minX + 6, y: inset.maxY - 3,
+                                    width: inset.width - 12, height: 3)
+                c.setFill()
+                NSBezierPath(roundedRect: stripe, xRadius: 1.5, yRadius: 1.5).fill()
             }
 
             // While loading, the state dot becomes a spinner; the state is still
