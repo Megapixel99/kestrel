@@ -165,6 +165,17 @@ enum SessionTest {
             check("...and NOT readable from another container",
                   readB?.contains("containerA") != true,
                   "\(b.name) sees: \(readB.map { $0.isEmpty ? "no cookies" : $0 } ?? "nil")")
+            // A restart must not quietly move a tab into the default jar.
+            browser.saveSession()
+            let saved = Store.loadSession()
+            let jarred = saved.first { $0.containerID != nil }
+            check("the session file remembers which container a tab was in",
+                  jarred != nil,
+                  jarred?.containerID ?? "no tab recorded a container")
+            check("...and it is a container that still exists",
+                  jarred.flatMap { c in UUID(uuidString: c.containerID ?? "") }
+                      .map { id in ContainerStore.all.contains { $0.id == id } } ?? false)
+
             check("the two containers have different data stores",
                   ContainerStore.store(for: a) !== ContainerStore.store(for: b))
             check("asking twice for one container returns the same store",
@@ -293,6 +304,13 @@ enum SessionTest {
             }
             check("a non-article page does not offer it", appAvailable == false)
         }
+
+        // Extension pages must stay out of the session file: their UUID is per-install,
+        // so a restored one points at nothing.
+        browser.openTab(url: URL(string: "webkit-extension://deadbeef-0000/options.html")!)
+        browser.saveSession()
+        check("extension pages are not written into the session",
+              !Store.loadSession().contains { $0.url.hasPrefix("webkit-extension://") })
 
         // --- network monitor, against a real request the page makes ---
         NetworkMonitor.clear()

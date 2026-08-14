@@ -753,13 +753,17 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
     func saveSession() {
         Store.saveSession(tabs.compactMap { tab in
             guard !NewTabPage.isNewTab(tab.url) else { return nil }
+            // An add-on's own pages are keyed by a per-install UUID, so a restored
+            // webkit-extension:// URL points at nothing and the tab comes back blank.
+            guard tab.url.scheme != "webkit-extension" else { return nil }
             return Store.SessionTab(url: tab.url.absoluteString, title: tab.title,
                                     interactionState: tab.sessionImage
                                         ?? (tab.webView?.interactionState as? Data),
                                     pinned: tab.pinned,
                                     scrollX: tab.pageState.scrollX,
                                     scrollY: tab.pageState.scrollY,
-                                    formValues: tab.pageState.values)
+                                    formValues: tab.pageState.values,
+                                    containerID: tab.container?.id.uuidString)
         })
         Store.flush()
     }
@@ -775,6 +779,10 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
             tab.pageState = SessionStore.PageState(scrollX: st.scrollX, scrollY: st.scrollY,
                                                    values: st.formValues)
             tab.hasUnsubmittedInput = tab.pageState.hasInput
+            // A container tab has to come back in the same jar or the restore is a lie.
+            if let cid = st.containerID, let uuid = UUID(uuidString: cid) {
+                tab.container = ContainerStore.all.first { $0.id == uuid }
+            }
             nextId += 1
             tabs.append(tab)
         }
@@ -851,6 +859,12 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
 
     func select(_ tab: Tab) {
         let previous = currentTab
+        // The highlight overlay belongs to the page being inspected; leaving it behind
+        // paints a blue box on a tab nobody is inspecting any more.
+        if previous?.id != tab.id, devPanel != nil {
+            previous?.webView?.evaluateJavaScript(
+                "var b=document.getElementById('__kestrel_highlight'); if(b) b.remove();")
+        }
         let needsLoad = tab.state < .live
 
         for other in tabs where other.id != tab.id { other.webView?.removeFromSuperview() }
@@ -1333,6 +1347,10 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         if let tab = tabs.first(where: { $0.webView === webView }) {
+            // A real navigation replaces the reader document, so the state it describes is
+            // gone. Leaving the flag set left the button lit on an ordinary page and made
+            // the next click try to "leave" a reader view that was not there.
+            if tab.readerActive, webView.url != nil { tab.readerActive = false }
             if tab.pageState.hasInput { tab.restorePending = true }
             if let u = webView.url, !NewTabPage.isNewTab(u) { tab.url = u }
             extensionsDidUpdate(tab, loading: true)

@@ -30,6 +30,10 @@ enum Store {
         var scrollX: Double = 0
         var scrollY: Double = 0
         var formValues: [String: String] = [:]
+        /// Which container's cookie jar this tab belonged to. Without it a tab put in
+        /// "Banking" comes back after a restart sharing the default jar — silently, and
+        /// with the site none the wiser that it is now the same visitor as everything else.
+        var containerID: String?
     }
 
     static var dir: URL {
