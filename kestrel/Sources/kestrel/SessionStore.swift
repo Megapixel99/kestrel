@@ -43,6 +43,7 @@ enum SessionStore {
           if (window.__kestrelSession) return;
           window.__kestrelSession = true;
           var timer = null;
+          var scrollTimer = null;
 
           function selectorFor(el, i) {
             if (el.id) return '#' + el.id;
@@ -81,14 +82,32 @@ enum SessionStore {
             } catch (e) {}
           }
 
+          // Scrolling cannot change a form value, so it sends the position and nothing
+          // else. Sharing the debounced path meant every scroll shipped every field's
+          // contents over IPC — 400 values on a form-heavy page, to report a number.
+          function sendScroll() {
+            try {
+              window.webkit.messageHandlers.\(messageName).postMessage({
+                kind: 'scroll',
+                scrollX: window.scrollX || 0,
+                scrollY: window.scrollY || 0
+              });
+            } catch (e) {}
+          }
+
           function schedule() {
             if (timer) clearTimeout(timer);
             timer = setTimeout(send, 400);
           }
 
+          function scheduleScroll() {
+            if (scrollTimer) clearTimeout(scrollTimer);
+            scrollTimer = setTimeout(sendScroll, 400);
+          }
+
           document.addEventListener('input', schedule, true);
           document.addEventListener('change', schedule, true);
-          window.addEventListener('scroll', schedule, { passive: true });
+          window.addEventListener('scroll', scheduleScroll, { passive: true });
           // A submitted form is no longer unsubmitted input; clearing here is what stops
           // the scheduler pinning a tab to COLD forever after one search.
           window.addEventListener('submit', function () {
@@ -176,6 +195,12 @@ final class PageMessageHandler: NSObject, WKScriptMessageHandler {
         switch message.name {
         case SessionStore.messageName:
             guard let d = message.body as? [String: Any] else { return }
+            // A scroll report carries only a position; it must not wipe the values.
+            if (d["kind"] as? String) == "scroll" {
+                tab.pageState.scrollX = d["scrollX"] as? Double ?? tab.pageState.scrollX
+                tab.pageState.scrollY = d["scrollY"] as? Double ?? tab.pageState.scrollY
+                return
+            }
             var state = SessionStore.PageState()
             state.scrollX = d["scrollX"] as? Double ?? 0
             state.scrollY = d["scrollY"] as? Double ?? 0
