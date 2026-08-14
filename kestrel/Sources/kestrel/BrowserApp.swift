@@ -32,6 +32,16 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
                               perTabCapBytes: Int64(Prefs.perTabCapMB) * 1024 * 1024,
                               keepLive: 3)
     var timer: Timer?
+    /// When this browser started. A WebContent process older than this belongs to some
+    /// other application, and attributing one to a tab reports another app's memory.
+    let launchedAt = Date()
+
+    /// The browser's real footprint: every WebContent process younger than the browser,
+    /// summed. This needs no per-tab attribution and is therefore not wrong in the way
+    /// attribution is — WebKit spawns several processes at once and `Tab.makeLive` picks
+    /// one of them arbitrarily, so a tab can report 52 MB while the process rendering its
+    /// page holds 511 MB. The budget is about the total, so the total is measured directly.
+    var measuredTotalBytes: Int64 = 0
     private var sampling = false
     var backButton: NSButton?
     var readerButton: NSButton?
@@ -948,8 +958,13 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
             let sampled = live.map { (tab, pid) -> (Tab, Int64) in
                 (tab, MemoryProbe.isAlive(pid) ? (MemoryProbe.footprint(pid: pid) ?? 0) : 0)
             }
-            let pids = Set(MemoryProbe.webContentPids())
+            let aged = MemoryProbe.webContentPidsWithAge()
+            let cutoff = Int(Date().timeIntervalSince(self.launchedAt)) + 3
+            let ours = aged.filter { $0.age <= cutoff }.map(\.pid)
+            let realTotal = ours.reduce(Int64(0)) { $0 + (MemoryProbe.footprint(pid: $1) ?? 0) }
             DispatchQueue.main.async {
+                let pids = Set(ours)
+                self.measuredTotalBytes = realTotal
                 Tab.lastKnownPids = pids
                 for (tab, bytes) in sampled { tab.cachedBytes = bytes }
                 // A tab whose process has gone needs a new one, or it reads 0 MB forever.
@@ -958,6 +973,15 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
                 self.applyBudgetAndRefresh()
             }
         }
+    }
+
+    /// The WebContent processes that could plausibly be ours: those younger than the
+    /// browser itself. Everything else on the machine belongs to another app.
+    func ourWebContentPids() -> Set<Int32> {
+        let uptime = Int(Date().timeIntervalSince(launchedAt)) + 3   // slack for rounding
+        return Set(MemoryProbe.webContentPidsWithAge()
+                     .filter { $0.age <= uptime }
+                     .map(\.pid))
     }
 
     /// Re-identifies the WebContent process behind a tab after WebKit has swapped it.
@@ -975,6 +999,37 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
     /// Reassignment is a heuristic and cannot be otherwise. An unclaimed live process is
     /// matched to a tab that has lost one; with several candidates the largest goes to the
     /// foreground tab, which is the one most likely to have just navigated.
+    /// After a navigation, find the process now rendering the page.
+    ///
+    /// WebKit spawns a new content process for a new site and keeps the old one alive for
+    /// reuse — this project measured it outliving its view by over 110 seconds. So the pid
+    /// captured when the tab was created stays *alive* and keeps answering, with the
+    /// footprint of a page nobody is looking at. Nothing detects that: the number is
+    /// plausible, stable and wrong.
+    ///
+    /// Measured from a screen recording: the status line read 52 MB before and after
+    /// loading a Jira board, while the process actually rendering it held 511 MB.
+    ///
+    /// Same technique as at tab creation — diff the process list across the event — but
+    /// applied to navigation, and restricted to processes younger than the browser.
+    func reidentifyProcess(for tab: Tab) {
+        let before = ourWebContentPids()
+        let claimed = Set(tabs.compactMap { $0 === tab ? nil : $0.pid })
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self, weak tab] in
+            guard let self, let tab, tab.webView != nil else { return }
+            let appeared = self.ourWebContentPids()
+                .subtracting(before)
+                .subtracting(claimed)
+            // Exactly one new process means it is this navigation's. More than one is
+            // ambiguous and left alone rather than guessed at.
+            if appeared.count == 1, let found = appeared.first {
+                tab.pid = found
+                tab.footprintKnown = true
+                self.sampleMemory()
+            }
+        }
+    }
+
     func reclaimProcesses(live: Set<Int32>) {
         let orphaned = tabs.filter { tab in
             tab.state == .live && tab.webView != nil
@@ -1292,6 +1347,12 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
         // the two used to render identically as "0 MB". A budget that silently omits a
         // live page is worse than one that admits it cannot see it.
         let unmeasured = tabs.filter { $0.state == .live && !$0.footprintKnown }.count
+        // What the tabs add up to, against what the browser actually weighs. They disagree
+        // when attribution has gone wrong, and that disagreement is the single most useful
+        // number here — it is what a screen recording had to be sent to reveal.
+        let attributed = total
+        let real = measuredTotalBytes
+        let mismatch = real > 0 && Double(abs(real - attributed)) / Double(real) > 0.2
         statusLabel.stringValue = String(
             format: "%.0f MB of %.0f MB %@   ·   LIVE %d  WARM %d  COLD %d  STUB %d   ·   %d demotions, %d discarded%@%@",
             Double(total) / 1_048_576, Double(scheduler.budgetBytes) / 1_048_576,
@@ -1300,7 +1361,12 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
             scheduler.demotions, scheduler.stateLosses,
             scheduler.gaveUp > 0 ? "   ·   budget unreachable (holding rather than discarding)" : "",
             unmeasured > 0 ? "   ·   \(unmeasured) tab(s) UNMEASURED" : "")
-        statusLabel.textColor = unmeasured > 0 ? .systemRed
+        if mismatch {
+            statusLabel.stringValue += String(
+                format: "   ·   browser really holds %.0f MB (tabs account for %.0f)",
+                Double(real) / 1_048_576, Double(attributed) / 1_048_576)
+        }
+        statusLabel.textColor = (unmeasured > 0 || mismatch) ? .systemRed
                               : over ? .systemOrange : .secondaryLabelColor
     }
 
@@ -1473,6 +1539,9 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         if let tab = tabs.first(where: { $0.webView === webView }) {
+            // A new site may be rendering in a new process; the old one stays alive and
+            // would keep answering with the wrong number.
+            reidentifyProcess(for: tab)
             // A real navigation replaces the reader document, so the state it describes is
             // gone. Leaving the flag set left the button lit on an ordinary page and made
             // the next click try to "leave" a reader view that was not there.

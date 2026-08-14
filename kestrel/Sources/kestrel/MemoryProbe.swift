@@ -106,6 +106,48 @@ extension MemoryProbe {
 extension MemoryProbe {
     /// Just the pids, without paying for a footprint call on each -- used for the
     /// pid-set diffing that maps a tab to its WebContent process.
+    /// WebContent processes with how long each has been running.
+    ///
+    /// `ps` lists **every** WebContent process on the machine, and they are XPC services
+    /// parented to launchd, so there is no parent to filter on and their command lines are
+    /// identical. Age is the one sound discriminator available: a process older than the
+    /// browser cannot belong to it.
+    ///
+    /// This matters more than it sounds. Without it a tab was attributed a 52 MB process
+    /// belonging to another application that had been running for eight days, and reported
+    /// that figure while the 511 MB process actually rendering the page went uncounted.
+    static func webContentPidsWithAge() -> [(pid: Int32, age: Int)] {
+        guard let out = run("/bin/ps", ["-axo", "pid=,etime=,comm="]) else { return [] }
+        var result: [(Int32, Int)] = []
+        for line in out.split(separator: "\n") {
+            guard line.contains("WebContent") else { continue }
+            let parts = line.split(separator: " ", omittingEmptySubsequences: true)
+            guard parts.count >= 2, let pid = Int32(parts[0]),
+                  let age = elapsedSeconds(String(parts[1])) else { continue }
+            result.append((pid, age))
+        }
+        return result
+    }
+
+    /// Parses `ps` elapsed time: `[[dd-]hh:]mm:ss`.
+    static func elapsedSeconds(_ s: String) -> Int? {
+        var days = 0
+        var rest = s
+        if let dash = s.firstIndex(of: "-") {
+            days = Int(s[s.startIndex..<dash]) ?? 0
+            rest = String(s[s.index(after: dash)...])
+        }
+        let f = rest.split(separator: ":").map { Int($0) ?? 0 }
+        guard !f.isEmpty else { return nil }
+        let hms: Int
+        switch f.count {
+        case 3: hms = f[0] * 3600 + f[1] * 60 + f[2]
+        case 2: hms = f[0] * 60 + f[1]
+        default: hms = f[0]
+        }
+        return days * 86_400 + hms
+    }
+
     static func webContentPids() -> [Int32] {
         guard let out = run("/bin/ps", ["-axo", "pid=,comm="]) else { return [] }
         var pids: [Int32] = []

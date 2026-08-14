@@ -146,7 +146,54 @@ normally, so the fixes here cost it nothing.
 
 ---
 
-## 9. A tab's memory can become unmeasurable, and the cause is unidentified
+## 9. Per-tab memory attribution is unreliable — the cause, found
+
+**Severity:** high, and it reaches further than the browser's UI.
+
+**How it was found.** Two screen recordings. In the first, a Jira board read `0 MB`. In the
+second, the status line read `52 MB` before *and after* loading Jira — the same figure on two
+completely different pages. Weighing the processes while that session was still running:
+
+    38183  113 MB   17:00:47   Kestrel's own, spawned at launch
+    38589  511 MB   17:01:08   spawned when Jira was opened
+    36795   52 MB   Aug 6      another application entirely
+
+The browser was reporting a **different app's** process, and never saw the 511 MB one
+rendering the page.
+
+**Two causes.**
+
+1. `ps` lists every WebContent process on the machine. They are launchd-parented XPC
+   services with identical command lines, so there is no parent and no client tag to filter
+   on. The only sound discriminator is **age**: a process older than the browser cannot be
+   its. Nothing filtered on it.
+2. `Tab.makeLive` claimed its process with `after.subtracting(before).first` — and WebKit
+   spawns **several at once**, five on one measured launch. `.first` on an unordered set is
+   an arbitrary pick among them. Whichever it grabbed, it reported for the tab's lifetime.
+
+**Fixed:** foreign processes excluded by age; the process list re-diffed after each
+navigation, because WebKit keeps the old process alive and it keeps answering; and the
+browser's **total** measured directly by summing its own processes, which needs no
+attribution and so cannot be wrong in the way attribution is. When the attributed and
+measured totals disagree by more than 20% the status line says so in red.
+
+The gap is real and large. In the test harness:
+
+    the browser measures its own total footprint — 283 MB measured, 62 MB attributed
+
+**What this calls into question.** Every per-tab figure this project has published rests on
+that attribution step, including the rung costs in RESULTS-ENGINE.md (LIVE 128 MB, WARM
+106 MB, COLD 39 MB). `probe` drives one tab at a time, which makes its diff far more likely
+to have been correct, so those numbers are probably sound — but *probably* is the honest
+word and they should be re-measured against the summed total before being quoted again.
+
+**Still open:** attribution itself. Picking correctly among several simultaneous processes
+needs something WebKit does not expose. The browser now says when it cannot, rather than
+showing a plausible wrong number.
+
+---
+
+## ~~9b. A tab's memory can become unmeasurable~~ — superseded by the above
 
 **Severity:** high — the budget is computed from these numbers.
 

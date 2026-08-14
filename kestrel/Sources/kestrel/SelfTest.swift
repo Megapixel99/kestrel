@@ -31,6 +31,19 @@ enum SelfTest {
         check("rendering about:memory is cheap enough for the tick",
               renderMs < 5, String(format: "%.2f ms per render, 24 tabs", renderMs))
 
+        // --- elapsed time parsing, which decides whose process a tab may claim ---
+        // ps prints [[dd-]hh:]mm:ss. Getting this wrong lets a tab claim another
+        // application's WebContent process — which is exactly what happened: a tab
+        // reported 52 MB belonging to a process that had been running for eight days.
+        check("etime mm:ss", MemoryProbe.elapsedSeconds("03:22") == 202)
+        check("etime hh:mm:ss", MemoryProbe.elapsedSeconds("01:00:00") == 3600)
+        check("etime dd-hh:mm:ss", MemoryProbe.elapsedSeconds("07-22:30:27") == 685827,
+              "\(MemoryProbe.elapsedSeconds("07-22:30:27") ?? -1)")
+        check("a week-old process is not young enough to be ours",
+              (MemoryProbe.elapsedSeconds("07-22:30:27") ?? 0) > 600)
+        check("a process from this minute is",
+              (MemoryProbe.elapsedSeconds("00:41") ?? 99999) < 600)
+
         // --- session writes must not block the tick ---
         // saveSession() runs on a timer, on the main thread, and JSON-encodes every tab
         // including its interactionState blob. That is the same shape as the bug in

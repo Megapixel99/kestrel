@@ -346,6 +346,21 @@ enum SessionTest {
                   mTab.pid != deadPid,
                   mTab.pid.map(String.init) ?? "none")
 
+            // The budget is about the browser's total, and that needs no attribution:
+            // sum every WebContent process younger than the browser. Attribution can be
+            // wrong — WebKit spawns several processes at once and one is picked
+            // arbitrarily — so the total is measured directly and the two are compared.
+            browser.sampleMemory()
+            settle(5)
+            check("the browser measures its own total footprint",
+                  browser.measuredTotalBytes > 0,
+                  "\(browser.measuredTotalBytes / 1_048_576) MB measured, "
+                  + "\(browser.scheduler.totalBytes(browser.tabs) / 1_048_576) MB attributed")
+            check("...and it is at least what the tabs account for",
+                  browser.measuredTotalBytes >= browser.scheduler.totalBytes(browser.tabs) / 2,
+                  "measured \(browser.measuredTotalBytes / 1_048_576) vs attributed "
+                  + "\(browser.scheduler.totalBytes(browser.tabs) / 1_048_576)")
+
             // The deeper failure the recording exposed: a tab that cannot be measured
             // rendered as "0 MB", indistinguishable from one that costs nothing, and the
             // budget counted it as free. Unknown must look like unknown.
