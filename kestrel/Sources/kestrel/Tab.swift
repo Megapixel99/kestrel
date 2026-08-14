@@ -48,6 +48,10 @@ final class Tab: NSObject {
     /// remembers whether it has been wired. Reset when the view is rebuilt.
     var handlersAttached = false
 
+    /// Whether kestrel://memory's document has been loaded into this tab yet. After that
+    /// the numbers are updated in place rather than by reloading the page.
+    var memoryShellLoaded = false
+
     /// True from the moment a load starts on a tab that has captured state until that
     /// state has been put back. A freshly loaded page reports empty fields, and without
     /// this the report arrives first and wipes exactly what is about to be restored.
@@ -234,6 +238,7 @@ final class Tab: NSObject {
             wv.autoresizingMask = [.width, .height]
             webView = wv
             handlersAttached = false
+            memoryShellLoaded = false
             container.addSubview(wv)
             if let sessionImage { wv.interactionState = sessionImage }
             loadCurrent(into: wv)

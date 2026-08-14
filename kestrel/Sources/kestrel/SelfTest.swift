@@ -16,6 +16,21 @@ enum SelfTest {
         check("QR encodes a URL", qr != nil,
               qr.map { "\(Int($0.size.width))x\(Int($0.size.height))" } ?? "nil")
 
+        // --- about:memory rendering, which runs on the tick ---
+        let manyTabs = (0..<24).map { i -> Tab in
+            let t = Tab(id: i, url: URL(string: "https://example.com/\(i)")!, title: "Tab \(i)")
+            t.cachedBytes = Int64(i) * 8_000_000
+            return t
+        }
+        let sched = Scheduler(budgetBytes: 1_200 * 1024 * 1024, perTabCapBytes: 0, keepLive: 3)
+        let renderStart = Date()
+        for _ in 0..<40 {
+            _ = AboutMemory.html(tabs: manyTabs, scheduler: sched, foregroundId: 0)
+        }
+        let renderMs = Date().timeIntervalSince(renderStart) * 1000 / 40
+        check("rendering about:memory is cheap enough for the tick",
+              renderMs < 5, String(format: "%.2f ms per render, 24 tabs", renderMs))
+
         // --- session writes must not block the tick ---
         // saveSession() runs on a timer, on the main thread, and JSON-encodes every tab
         // including its interactionState blob. That is the same shape as the bug in

@@ -960,11 +960,28 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
 
     /// Renders kestrel://memory into whichever tabs are showing it.
     func refreshMemoryPages() {
-        let html = AboutMemory.html(tabs: tabs, scheduler: scheduler,
-                                    foregroundId: foregroundId)
-        for tab in tabs where AboutMemory.isMemoryPage(tab.url) {
-            tab.webView?.loadHTMLString(html, baseURL: nil)
+        // Nothing to do at all when no memory tab is open — this runs on every tick.
+        let pages = tabs.filter { AboutMemory.isMemoryPage($0.url) }
+        guard !pages.isEmpty else { return }
+
+        var payload: String?
+        for tab in pages {
+            guard let wv = tab.webView else { continue }
             if tab.title != "Memory" { tab.title = "Memory" }
+            if !tab.memoryShellLoaded {
+                tab.memoryShellLoaded = true
+                wv.loadHTMLString(AboutMemory.html(tabs: tabs, scheduler: scheduler,
+                                                   foregroundId: foregroundId),
+                                  baseURL: nil)
+                continue
+            }
+            // The document is already there; only the numbers change. Reloading it every
+            // 1.5 s threw away the scroll position and re-parsed the page 40 times a
+            // minute — on the page whose entire job is to report what things cost.
+            let json = payload ?? AboutMemory.payload(tabs: tabs, scheduler: scheduler,
+                                                      foregroundId: foregroundId)
+            payload = json
+            wv.evaluateJavaScript("typeof updateMemory === 'function' && updateMemory(\(json))")
         }
     }
 

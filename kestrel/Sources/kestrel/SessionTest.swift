@@ -124,6 +124,48 @@ enum SessionTest {
               html.contains("LIVE") || html.contains("COLD"))
         check("memory page counts the tabs it has",
               html.contains("<tbody><tr") || html.contains("<td class=\"state"))
+        // The page must update in place: reloading it every tick threw away the scroll
+        // position. This asserts the updater exists, runs, and changes what is on screen
+        // without the document being replaced.
+        browser.openTab(url: AboutMemory.sentinel)
+        if let memTab = browser.currentTab, let memView = memTab.webView {
+            browser.refreshMemoryPages()      // loads the shell
+            settle(2)
+            var hasUpdater: String?
+            wait(10) { done in
+                memView.evaluateJavaScript("typeof updateMemory") { v, _ in
+                    hasUpdater = v as? String; done()
+                }
+            }
+            check("the memory page ships an in-place updater", hasUpdater == "function",
+                  hasUpdater ?? "nil")
+
+            // Mark the document, tick, and check the mark survived: a reload would wipe it.
+            wait(10) { d in
+                memView.evaluateJavaScript("window.__kestrelMark = 'kept'; 'ok'") { _, _ in d() }
+            }
+            browser.refreshMemoryPages()      // should update, not reload
+            settle(2)
+            var mark: String?
+            wait(10) { done in
+                memView.evaluateJavaScript("window.__kestrelMark || 'gone'") { v, _ in
+                    mark = v as? String; done()
+                }
+            }
+            check("...and a tick updates it without reloading the document",
+                  mark == "kept", mark ?? "nil")
+
+            var shown: String?
+            wait(10) { done in
+                memView.evaluateJavaScript(
+                    "document.getElementById('rows').children.length + ' rows'") { v, _ in
+                    shown = v as? String; done()
+                }
+            }
+            check("...with the tab table filled in", shown?.hasSuffix("rows") == true
+                  && shown != "0 rows", shown ?? "nil")
+        }
+
         check("kestrel://memory is not treated as the new tab page",
               !NewTabPage.isNewTab(AboutMemory.sentinel)
               && AboutMemory.isMemoryPage(AboutMemory.sentinel))

@@ -107,14 +107,14 @@ enum AboutMemory {
           <h1>Memory</h1>
           <div class="sub">Live, from this browser's own scheduler. Refreshes as it runs.</div>
           <div class="headline">
-            <span class="big">\(mb(total))</span><span class="of">MB of \(mb(budget)) MB budget</span>
+            <span class="big" id="total">\(mb(total))</span><span class="of">MB of <span id="budget">\(mb(budget))</span> MB budget</span>
           </div>
-          <div class="gauge\(over ? " over" : "")"><i style="width:\(String(format: "%.1f", pct))%"></i></div>
-          \(ladder)
+          <div class="gauge\(over ? " over" : "")" id="gauge"><i style="width:\(String(format: "%.1f", pct))%"></i></div>
+          <div id="ladder">\(ladder)</div>
           <table>
             <thead><tr><th>State</th><th>Tab</th><th>MB</th><th>PID</th>
               <th>Restore</th><th>Visits</th></tr></thead>
-            <tbody>\(rows)</tbody>
+            <tbody id="rows">\(rows)</tbody>
           </table>
           <div class="note">
             Footprint is <code>phys_footprint</code> per WebContent process, which is what
@@ -122,8 +122,78 @@ enum AboutMemory {
             as zero — that is the point of COLD and STUB, not a gap in the measurement.
             This page is itself a tab, and it is counted in the total above.
           </div>
+          <script>
+          // Updated in place from the browser, rather than reloading the document.
+          function updateMemory(d) {
+            document.getElementById('total').textContent = d.total;
+            document.getElementById('budget').textContent = d.budget;
+            var g = document.getElementById('gauge');
+            g.className = 'gauge' + (d.over ? ' over' : '');
+            g.firstElementChild.style.width = d.pct.toFixed(1) + '%';
+            document.getElementById('ladder').innerHTML = d.rungs.map(function (r) {
+              return '<div class="rung"><span class="tag ' + r.state.toLowerCase() + '">'
+                + r.state + '</span><span class="bar"><i style="width:'
+                + r.share.toFixed(1) + '%"></i></span><span class="figure">'
+                + r.count + ' tab' + (r.count === 1 ? '' : 's') + ' \\u00b7 ' + r.mb
+                + ' MB \\u00b7 ' + Math.round(r.share) + '%</span></div>';
+            }).join('');
+            document.getElementById('rows').innerHTML = d.rows.map(function (t) {
+              function esc(x) {
+                return String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                                .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+              }
+              return '<tr' + (t.live ? ' class="live"' : '') + '><td class="state '
+                + t.state.toLowerCase() + '">' + t.state + '</td><td class="name" title="'
+                + esc(t.url) + '">' + esc(t.name) + '</td><td class="num">' + t.mb
+                + '</td><td class="num">' + esc(t.pid) + '</td><td class="num">'
+                + esc(t.restore) + '</td><td class="num">' + t.uses + '</td></tr>';
+            }).join('');
+          }
+          </script>
         </body></html>
         """
+    }
+
+    /// The numbers, as JSON, for updating a page that is already open.
+    ///
+    /// The page used to be re-rendered and `loadHTMLString`d on every 1.5 s tick — a full
+    /// document reload forty times a minute, which threw away the scroll position and any
+    /// selection, and re-parsed the document each time. Rendering it is cheap (0.23 ms for
+    /// 24 tabs); reloading it is not, and it made the page unusable as soon as it was long
+    /// enough to scroll.
+    static func payload(tabs: [Tab], scheduler: Scheduler, foregroundId: Int) -> String {
+        let total = scheduler.totalBytes(tabs)
+        let budget = scheduler.budgetBytes
+        func mb(_ b: Int64) -> Int { Int(Double(b) / 1_048_576) }
+
+        var rungs: [[String: Any]] = []
+        for state in [TabState.live, .warm, .cold, .stub] {
+            let group = tabs.filter { $0.state == state }
+            guard !group.isEmpty else { continue }
+            let sum = group.reduce(Int64(0)) { $0 + $1.currentBytes }
+            rungs.append(["state": "\(state)", "count": group.count, "mb": mb(sum),
+                          "share": total > 0 ? Double(sum) / Double(total) * 100 : 0])
+        }
+
+        let rows = tabs.sorted { $0.currentBytes > $1.currentBytes }.map { t -> [String: Any] in
+            ["state": "\(t.state)",
+             "name": t.title.isEmpty ? t.url.absoluteString : t.title,
+             "url": t.url.absoluteString,
+             "mb": mb(t.currentBytes),
+             "pid": t.pid.map(String.init) ?? "—",
+             "restore": t.lastRestoreMs > 0 ? String(format: "%.0f ms", t.lastRestoreMs) : "—",
+             "uses": t.uses,
+             "live": t.id == foregroundId]
+        }
+
+        let obj: [String: Any] = [
+            "total": mb(total), "budget": mb(budget),
+            "over": total > budget,
+            "pct": budget > 0 ? min(100, Double(total) / Double(budget) * 100) : 0,
+            "rungs": rungs, "rows": rows,
+        ]
+        let data = (try? JSONSerialization.data(withJSONObject: obj)) ?? Data()
+        return String(data: data, encoding: .utf8) ?? "{}"
     }
 
     private static func escape(_ s: String) -> String {
