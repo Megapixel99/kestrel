@@ -95,11 +95,13 @@ enum SessionTest {
         check("...with the right value", readback == "half typed", readback ?? "nil")
 
         // --- session file round trip ---
+        // `waitForIt` because this reads the file straight back: the browser's periodic
+        // save is asynchronous, and a test that assumes otherwise is testing a race.
         // The capture script debounces at 400 ms, so a save issued the instant after a
         // restore writes the pre-restore state. Waiting here is the test being honest
         // about the timing, not papering over it: the browser saves on a 10 s tick.
         settle(2)
-        browser.saveSession()
+        browser.saveSession(waitForIt: true)
         let file = Store.loadSession()
         check("session file records form state",
               file.contains { !$0.formValues.isEmpty },
@@ -166,7 +168,7 @@ enum SessionTest {
                   readB?.contains("containerA") != true,
                   "\(b.name) sees: \(readB.map { $0.isEmpty ? "no cookies" : $0 } ?? "nil")")
             // A restart must not quietly move a tab into the default jar.
-            browser.saveSession()
+            browser.saveSession(waitForIt: true)
             let saved = Store.loadSession()
             let jarred = saved.first { $0.containerID != nil }
             check("the session file remembers which container a tab was in",
@@ -308,7 +310,7 @@ enum SessionTest {
         // Extension pages must stay out of the session file: their UUID is per-install,
         // so a restored one points at nothing.
         browser.openTab(url: URL(string: "webkit-extension://deadbeef-0000/options.html")!)
-        browser.saveSession()
+        browser.saveSession(waitForIt: true)
         check("extension pages are not written into the session",
               !Store.loadSession().contains { $0.url.hasPrefix("webkit-extension://") })
 

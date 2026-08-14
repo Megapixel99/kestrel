@@ -16,6 +16,38 @@ enum SelfTest {
         check("QR encodes a URL", qr != nil,
               qr.map { "\(Int($0.size.width))x\(Int($0.size.height))" } ?? "nil")
 
+        // --- session writes must not block the tick ---
+        // saveSession() runs on a timer, on the main thread, and JSON-encodes every tab
+        // including its interactionState blob. That is the same shape as the bug in
+        // DEBUGGING.md §2, where the instrumentation cost more than the thing it measured.
+        // 24 tabs with realistic 60 KB session images is an ordinary heavy session.
+        let blob = Data(repeating: 0x41, count: 60 * 1024)
+        let heavy = (0..<24).map { i -> Store.SessionTab in
+            Store.SessionTab(url: "https://example.com/\(i)", title: "Tab \(i)",
+                             interactionState: blob, pinned: false,
+                             scrollX: 0, scrollY: 0, formValues: [:], containerID: nil)
+        }
+        let saveStart = Date()
+        Store.saveSession(heavy)
+        Store.flush()
+        let saveMs = Date().timeIntervalSince(saveStart) * 1000
+        // The threshold is the point. 52 ms was what this cost on the main thread before
+        // the encode and write moved off it — three dropped frames every tick. A limit
+        // loose enough to pass the old code would not have caught anything.
+        check("saving a 24-tab session does not block the main thread",
+              saveMs < 10, String(format: "%.1f ms on the main thread for %d KB",
+                                  saveMs, 24 * 60))
+
+        // ...and it still has to arrive. An async write that never lands is worse than a
+        // slow one, because nothing complains until the session is gone.
+        let syncStart = Date()
+        Store.saveSession(heavy, waitForIt: true)
+        let syncMs = Date().timeIntervalSince(syncStart) * 1000
+        let written = Store.loadSession()
+        check("...and a waited write is on disk when it returns",
+              written.count == heavy.count,
+              String(format: "%d tabs, %.0f ms when waited", written.count, syncMs))
+
         // --- reading a tab's memory must never spawn a subprocess ---
         // /usr/bin/footprint costs ~226 ms. currentBytes used to call it on every read,
         // roughly 8 times per UI tick, which dropped a quarter of frames while scrolling.

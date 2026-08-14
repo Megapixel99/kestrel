@@ -750,7 +750,7 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
         ucc.add(PageMessageHandler(browser: self, tab: tab), name: NetworkMonitor.messageName)
     }
 
-    func saveSession() {
+    func saveSession(waitForIt: Bool = false) {
         Store.saveSession(tabs.compactMap { tab in
             guard !NewTabPage.isNewTab(tab.url) else { return nil }
             // An add-on's own pages are keyed by a per-install UUID, so a restored
@@ -764,8 +764,8 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
                                     scrollY: tab.pageState.scrollY,
                                     formValues: tab.pageState.values,
                                     containerID: tab.container?.id.uuidString)
-        })
-        Store.flush()
+        }, waitForIt: waitForIt)
+        Store.flush(waitForIt: waitForIt)
     }
 
     func restoreSession() -> Bool {
@@ -1570,7 +1570,8 @@ enum BrowserApp {
         NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification, object: nil, queue: .main
         ) { _ in
-            controller.saveSession()
+            // On the way out the write has to complete before the process does.
+            controller.saveSession(waitForIt: true)
             SessionStore.markCleanExit()
         }
         withExtendedLifetime(controller) { NSApplication.shared.run() }

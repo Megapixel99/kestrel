@@ -48,9 +48,26 @@ enum Store {
               let v = try? JSONDecoder().decode(T.self, from: data) else { return fallback }
         return v
     }
-    private static func save<T: Encodable>(_ value: T, _ name: String) {
-        guard let data = try? JSONEncoder().encode(value) else { return }
-        try? data.write(to: dir.appendingPathComponent(name), options: .atomic)
+    /// Everything on disk is written off the main thread.
+    ///
+    /// The session is saved on a timer, and encoding it means serialising every tab's
+    /// `interactionState` — 52 ms of main-thread work for a 24-tab session, measured, or
+    /// three dropped frames every ten seconds. That is the same mistake as the memory
+    /// probe in DEBUGGING.md §2: a background housekeeping job charged to the thing the
+    /// user is actually doing.
+    ///
+    /// Gathering the values still happens on the main thread, because `interactionState`
+    /// belongs to the web view. Only the encode and the write move.
+    private static let ioQueue = DispatchQueue(label: "dev.kestrel.store-io", qos: .utility)
+
+    private static func save<T: Encodable>(_ value: T, _ name: String, waitForIt: Bool = false) {
+        let target = dir.appendingPathComponent(name)
+        let work = {
+            guard let data = try? JSONEncoder().encode(value) else { return }
+            try? data.write(to: target, options: .atomic)
+        }
+        // Quitting is the one time the write has to finish before we go.
+        if waitForIt { ioQueue.sync(execute: work) } else { ioQueue.async(execute: work) }
     }
 
     // MARK: - bookmarks
@@ -96,9 +113,9 @@ enum Store {
         }
     }
 
-    static func flush() {
-        save(history, "history.json")
-        save(bookmarks, "bookmarks.json")
+    static func flush(waitForIt: Bool = false) {
+        save(history, "history.json", waitForIt: waitForIt)
+        save(bookmarks, "bookmarks.json", waitForIt: waitForIt)
     }
 
     /// Smart location bar: bookmarks first, then history, ranked by visits and recency.
@@ -124,6 +141,8 @@ enum Store {
 
     // MARK: - session
 
-    static func saveSession(_ tabs: [SessionTab]) { save(tabs, "session.json") }
+    static func saveSession(_ tabs: [SessionTab], waitForIt: Bool = false) {
+        save(tabs, "session.json", waitForIt: waitForIt)
+    }
     static func loadSession() -> [SessionTab] { load("session.json", []) }
 }
