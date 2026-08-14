@@ -146,6 +146,45 @@ normally, so the fixes here cost it nothing.
 
 ---
 
+## 9. A tab's memory can become unmeasurable, and the cause is unidentified
+
+**Severity:** high — the budget is computed from these numbers.
+
+**How it showed up.** A 58-second screen recording of one tab walking from home.apu.edu
+through id.atlassian.com to a Jira board. The readout over that span:
+
+    37 MB → 399 → 159 → 160 → 115 → … → 0 MB
+
+with a full Kanban board rendering and the memory bar empty.
+
+**What was wrong regardless of cause:** "cannot measure this tab" and "this tab costs
+nothing" both rendered as `0 MB`. The scheduler treated an unmeasurable live page as free —
+never counted, never a demotion candidate. A browser whose claim is that memory scales with
+what you are looking at was silently not looking. `Tab.footprintKnown` now separates the two,
+and the status line, `about:memory` and the dev panel all show `?` / `UNMEASURED` rather than
+a plausible zero.
+
+**What is fixed:** a tab whose recorded process has died no longer keeps the stale pid. Where
+exactly one orphaned tab meets exactly one unclaimed WebContent process, it is reclaimed.
+
+**What is deliberately not done:** reclaiming beyond that unambiguous case. An earlier
+version assigned "the largest unclaimed process to the foreground tab" and, in the test,
+moved a tab reporting 29 MB onto a 13 MB process belonging to something else. In a budget a
+confident wrong number is worse than an admitted gap, because it gets acted on.
+
+**Still unknown: which zero path the recording hit.** Two produce it and they were
+indistinguishable — `isAlive(pid)` false, or `/usr/bin/footprint` failing for a live pid. My
+first diagnosis, process-swap-on-cross-site-navigation, **did not reproduce**: navigating
+example.com → apple.com kept the same pid, which is consistent with Kestrel giving each tab
+its own `WKProcessPool`. Recorded here because it was stated confidently before being tested.
+
+**Where to start:** reproduce with the browser running and watch for `UNMEASURED`. If it
+appears, `MemoryProbe.isAlive` versus a failing `footprint` call can now be told apart by
+whether a pid is present. `probe` mode drives the ladder against real sites and is the
+natural place to add a long-running navigation walk.
+
+---
+
 ## 4. Network panel: `timing` rows have no headers
 
 **Severity:** none — a documented limit of the platform, listed here so it is not

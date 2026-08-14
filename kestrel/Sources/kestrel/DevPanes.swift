@@ -564,7 +564,9 @@ final class MemoryPane: NSView, NSTableViewDataSource {
             label.stringValue = "\(t.state)"
             label.textColor = MemoryBar.color(for: t.state)
         case "title":   label.stringValue = t.title.isEmpty ? t.url.absoluteString : t.title
-        case "mb":      label.stringValue = "\(t.currentBytes / 1_048_576)"
+        case "mb":
+            label.stringValue = t.footprintKnown ? "\(t.currentBytes / 1_048_576)" : "?"
+            if !t.footprintKnown { label.textColor = .systemRed }
         case "pid":     label.stringValue = t.pid.map(String.init) ?? "—"
         case "restore":
             label.stringValue = t.lastRestoreMs > 0

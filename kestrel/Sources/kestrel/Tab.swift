@@ -29,6 +29,14 @@ final class Tab: NSObject {
 
     var webView: WKWebView?
     var pid: Int32?
+
+    /// Whether `cachedBytes` means anything.
+    ///
+    /// A tab whose content process cannot be identified reported **0 MB**, which is
+    /// indistinguishable from a tab that genuinely costs nothing — and the budget
+    /// counted it as free. It took a screen recording to notice a Jira board reading zero.
+    /// Unknown and zero are different facts and the UI now says which it has.
+    var footprintKnown = true
     var sessionImage: Data?          // WKWebView.interactionState -- the COLD image
     var snapshot: NSImage?
 
@@ -249,7 +257,10 @@ final class Tab: NSObject {
                 let after = Set(MemoryProbe.webContentPids())
                 Tab.lastKnownPids = after
                 let found = after.subtracting(before).first
-                DispatchQueue.main.async { if let found { self?.pid = found } }
+                DispatchQueue.main.async {
+                if let found { self?.pid = found; self?.footprintKnown = true }
+                else { self?.footprintKnown = false }
+            }
             }
         } else if state == .cold, let wv = webView {
             if let sessionImage { wv.interactionState = sessionImage }

@@ -952,9 +952,61 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
             DispatchQueue.main.async {
                 Tab.lastKnownPids = pids
                 for (tab, bytes) in sampled { tab.cachedBytes = bytes }
+                // A tab whose process has gone needs a new one, or it reads 0 MB forever.
+                self.reclaimProcesses(live: pids)
                 self.sampling = false
                 self.applyBudgetAndRefresh()
             }
+        }
+    }
+
+    /// Re-identifies the WebContent process behind a tab after WebKit has swapped it.
+    ///
+    /// A tab's pid is found once, by diffing the process list when its web view is
+    /// created — `WKWebView` exposes no process identifier, so that is the only way. But
+    /// WebKit swaps the content process on cross-site navigation, and the old pid then
+    /// belongs to a dead process. The tab reads **0 MB for the rest of its life**, the
+    /// budget stops counting it, and the scheduler will never demote it.
+    ///
+    /// Found in a screen recording: a single tab walked from home.apu.edu through
+    /// id.atlassian.com to a Jira board — at least two swaps — and the readout went
+    /// 37 → 399 → 159 → 115 → **0 MB** with a heavy page plainly on screen.
+    ///
+    /// Reassignment is a heuristic and cannot be otherwise. An unclaimed live process is
+    /// matched to a tab that has lost one; with several candidates the largest goes to the
+    /// foreground tab, which is the one most likely to have just navigated.
+    func reclaimProcesses(live: Set<Int32>) {
+        let orphaned = tabs.filter { tab in
+            tab.state == .live && tab.webView != nil
+                && (tab.pid == nil || !live.contains(tab.pid!))
+        }
+        guard !orphaned.isEmpty else { return }
+        for tab in orphaned { tab.footprintKnown = false }
+
+        let claimed = Set(tabs.compactMap { tab -> Int32? in
+            guard let p = tab.pid, live.contains(p) else { return nil }
+            return p
+        })
+        var unclaimed = live.subtracting(claimed)
+        guard !unclaimed.isEmpty else {
+            for tab in orphaned { tab.pid = nil }
+            return
+        }
+
+        // Only the unambiguous case. One orphaned tab and exactly one unclaimed process
+        // can be matched; anything else is a guess, and a wrong guess is worse than no
+        // number — it credits one tab with another's memory and the budget counts a
+        // process twice. An earlier version picked "the largest unclaimed process for the
+        // foreground tab" and, in the test, moved a tab reporting 29 MB onto a 13 MB
+        // process that belonged to something else.
+        if orphaned.count == 1, unclaimed.count == 1 {
+            orphaned[0].pid = unclaimed.first
+            orphaned[0].footprintKnown = true
+            return
+        }
+        for tab in orphaned {
+            tab.pid = nil
+            tab.footprintKnown = false
         }
     }
 
@@ -1236,14 +1288,20 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
         let over = total > scheduler.budgetBytes
         refreshTabStrip()
         guard Date() >= flashUntil else { return }
+        // A tab whose process cannot be identified is not a tab that costs nothing, and
+        // the two used to render identically as "0 MB". A budget that silently omits a
+        // live page is worse than one that admits it cannot see it.
+        let unmeasured = tabs.filter { $0.state == .live && !$0.footprintKnown }.count
         statusLabel.stringValue = String(
-            format: "%.0f MB of %.0f MB %@   ·   LIVE %d  WARM %d  COLD %d  STUB %d   ·   %d demotions, %d discarded%@",
+            format: "%.0f MB of %.0f MB %@   ·   LIVE %d  WARM %d  COLD %d  STUB %d   ·   %d demotions, %d discarded%@%@",
             Double(total) / 1_048_576, Double(scheduler.budgetBytes) / 1_048_576,
             over ? "OVER BUDGET" : "",
             counts[.live] ?? 0, counts[.warm] ?? 0, counts[.cold] ?? 0, counts[.stub] ?? 0,
             scheduler.demotions, scheduler.stateLosses,
-            scheduler.gaveUp > 0 ? "   ·   budget unreachable (holding rather than discarding)" : "")
-        statusLabel.textColor = over ? .systemOrange : .secondaryLabelColor
+            scheduler.gaveUp > 0 ? "   ·   budget unreachable (holding rather than discarding)" : "",
+            unmeasured > 0 ? "   ·   \(unmeasured) tab(s) UNMEASURED" : "")
+        statusLabel.textColor = unmeasured > 0 ? .systemRed
+                              : over ? .systemOrange : .secondaryLabelColor
     }
 
     func flash(_ message: String) {

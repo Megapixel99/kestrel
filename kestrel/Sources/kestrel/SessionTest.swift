@@ -299,6 +299,71 @@ enum SessionTest {
         check("a right-click records the element under the cursor",
               target?.contains("p") == true, target ?? "nothing recorded")
 
+        // --- does the memory readout survive a process swap? ---
+        // WebKit swaps the WebContent process on cross-site navigation, and a tab's pid is
+        // found once, when its web view is created. From a screen recording: one tab walked
+        // from home.apu.edu to a Jira board and the readout went 37 → 399 → 159 → 0 MB with
+        // a heavy page on screen. The budget cannot enforce anything it reads as zero.
+        browser.openTab(url: URL(string: "https://example.com/")!)
+        if let mTab = browser.currentTab, let mView = mTab.webView {
+            mView.load(URLRequest(url: URL(string: "https://example.com/")!))
+            settle(6)
+            browser.sampleMemory()
+            settle(4)
+            let firstPid = mTab.pid
+            let firstBytes = mTab.cachedBytes
+            check("a live tab reports a footprint", firstBytes > 0,
+                  "\(firstBytes / 1_048_576) MB, pid \(firstPid.map(String.init) ?? "none")")
+
+            // Cross-site navigation does not reliably swap the process here — Kestrel
+            // gives each tab its own WKProcessPool — so navigating and hoping is a test
+            // that cannot fail for the reason it was written. The recovery is exercised
+            // directly instead: point the tab at a pid that is definitely dead and see
+            // whether the browser finds the live one again.
+            mView.load(URLRequest(url: URL(string: "https://www.apple.com/")!))
+            settle(8)
+            browser.sampleMemory()
+            settle(4)
+
+            let deadPid: Int32 = 999_999      // outside any plausible live range
+            mTab.pid = deadPid
+            mTab.cachedBytes = 0
+            browser.sampleMemory()
+            settle(5)
+
+            // The contract is not "recovery always succeeds" — reclaiming is only safe
+            // when one orphaned tab meets exactly one unclaimed process, and guessing
+            // beyond that put a tab on another's process in an earlier version. What must
+            // always hold is that the browser never reports a confident zero it cannot
+            // stand behind.
+            let recovered = mTab.pid != nil && mTab.pid != deadPid
+            check("a dead process is either replaced or admitted, never reported as 0",
+                  recovered || !mTab.footprintKnown,
+                  recovered
+                    ? "recovered pid \(mTab.pid.map(String.init) ?? "?")"
+                    : "marked unmeasured (pid \(mTab.pid.map(String.init) ?? "none"))")
+            check("...and a stale pid is never kept",
+                  mTab.pid != deadPid,
+                  mTab.pid.map(String.init) ?? "none")
+
+            // The deeper failure the recording exposed: a tab that cannot be measured
+            // rendered as "0 MB", indistinguishable from one that costs nothing, and the
+            // budget counted it as free. Unknown must look like unknown.
+            mTab.pid = nil
+            mTab.footprintKnown = false
+            let html = AboutMemory.html(tabs: browser.tabs, scheduler: browser.scheduler,
+                                        foregroundId: browser.foregroundId)
+            check("unmeasured is not zero on the memory page",
+                  html.contains(">?</td>"),
+                  html.contains(">?</td>") ? "renders ?" : "still rendering a number")
+            let payload = AboutMemory.payload(tabs: browser.tabs,
+                                              scheduler: browser.scheduler,
+                                              foregroundId: browser.foregroundId)
+            check("...and not zero in the live update payload",
+                  payload.contains("\"mb\":\"?\""),
+                  String(payload.prefix(80)))
+        }
+
         // --- what a scroll-triggered form scan costs ---
         // Scroll shares the debounced path with input, so scrolling a form-heavy page
         // runs a full querySelectorAll and reads every field. Scrolling cannot change a

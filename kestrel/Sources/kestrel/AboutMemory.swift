@@ -35,7 +35,7 @@ enum AboutMemory {
             <tr\(live ? " class=\"live\"" : "")>
               <td class="state \(tab.state.description.lowercased())">\(tab.state.description)</td>
               <td class="name" title="\(escape(tab.url.absoluteString))">\(escape(name))</td>
-              <td class="num">\(mb(tab.currentBytes))</td>
+              <td class="num">\(tab.footprintKnown ? "\(mb(tab.currentBytes))" : "?")</td>
               <td class="num">\(tab.pid.map(String.init) ?? "—")</td>
               <td class="num">\(tab.lastRestoreMs > 0 ? String(format: "%.0f ms", tab.lastRestoreMs) : "—")</td>
               <td class="num">\(tab.uses)</td>
@@ -179,7 +179,7 @@ enum AboutMemory {
             ["state": "\(t.state)",
              "name": t.title.isEmpty ? t.url.absoluteString : t.title,
              "url": t.url.absoluteString,
-             "mb": mb(t.currentBytes),
+             "mb": t.footprintKnown ? "\(mb(t.currentBytes))" : "?",
              "pid": t.pid.map(String.init) ?? "—",
              "restore": t.lastRestoreMs > 0 ? String(format: "%.0f ms", t.lastRestoreMs) : "—",
              "uses": t.uses,
