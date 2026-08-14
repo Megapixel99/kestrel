@@ -282,8 +282,57 @@ enum SessionTest {
             })()
             """) { v, _ in target = v as? String; done() }
         }
+        // A path that restarts at an id must still be findable in the tree.
+        var idPath: String?
+        wait(10) { done in
+            domView.evaluateJavaScript("""
+            (function () {
+              var el = document.getElementById('mark');
+              el.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true}));
+              return window.__kestrelInspectTarget || '';
+            })()
+            """) { v, _ in idPath = v as? String; done() }
+        }
+        check("selection survives an id restart in the path",
+              idPath == "span#mark", idPath ?? "nil")
+
         check("a right-click records the element under the cursor",
               target?.contains("p") == true, target ?? "nothing recorded")
+
+        // --- what the inspector's DOM walk actually costs ---
+        // The panel re-walks the document on a throttle I picked without measuring, which
+        // is the same guess that produced the last two findings. A page with a few thousand
+        // nodes is ordinary; the walk runs in the page's own process, so an expensive one
+        // steals from the page rather than from the browser.
+        var heavy = "<html><body>"
+        for i in 0..<1200 {
+            heavy += "<div class=\"row r\(i % 7)\"><span>cell \(i)</span>"
+                   + "<a href=\"/\(i)\">link</a></div>"
+        }
+        heavy += "</body></html>"
+        browser.openTab(url: URL(string: "https://example.com/heavy")!)
+        if let hTab = browser.currentTab, let hView = hTab.webView {
+            hView.loadHTMLString(heavy, baseURL: URL(string: "https://example.com/heavy"))
+            settle(3)
+            var walkMs: Double = 0
+            var nodes = 0
+            for _ in 0..<5 {
+                let t = Date()
+                var json: String?
+                wait(15) { done in
+                    hView.evaluateJavaScript(InspectorPane.snapshotScriptForTest) { v, _ in
+                        json = v as? String; done()
+                    }
+                }
+                walkMs += Date().timeIntervalSince(t) * 1000
+                nodes = max(nodes, (json?.components(separatedBy: "\"path\"").count ?? 1) - 1)
+            }
+            walkMs /= 5
+            check("the inspector's DOM walk is cheap enough to repeat",
+                  walkMs < 60,
+                  String(format: "%.0f ms for %d nodes on a 3600-element page",
+                         walkMs, nodes))
+        }
 
         // --- reader view, and what it costs ---
         // The claim is that a reader document is a fraction of the page. Measured, not

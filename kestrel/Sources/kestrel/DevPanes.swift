@@ -99,7 +99,10 @@ final class InspectorPane: NSView, NSOutlineViewDataSource, NSOutlineViewDelegat
     /// Rebuilds only when the panel has been idle a moment: the browser ticks every 1.5 s
     /// and re-walking the DOM that often would be its own performance problem.
     func reloadIfNeeded() {
-        guard Date().timeIntervalSince(lastReload) > 4 else { return }
+        // 2 s, from the measurement in sessiontest: the walk costs about 2 ms on a
+        // 3,600-element page. The 4 s here before was a guess made when it cost 127 ms,
+        // and guarding a cost nobody had measured.
+        guard Date().timeIntervalSince(lastReload) > 2 else { return }
         reload()
     }
 
@@ -123,13 +126,16 @@ final class InspectorPane: NSView, NSOutlineViewDataSource, NSOutlineViewDelegat
 
     private func select(path: String) {
         guard let root else { return }
-        // Walk to the node whose path matches, expanding as we go.
+        // Searched exhaustively rather than descended by prefix. A path restarts at any
+        // element with an id — `div#wrap` rather than `html > body > div#wrap` — so a
+        // child's path is not always its parent's plus a segment, and prefix descent walks
+        // straight past the node it wants.
         func find(_ n: Node) -> Node? {
             if n.path == path { return n }
             for c in n.children {
-                if path.hasPrefix(c.path) || c.path == path {
+                if let hit = find(c) {
                     outline.expandItem(c)
-                    if let hit = find(c) { return hit }
+                    return hit
                 }
             }
             return nil
@@ -202,48 +208,67 @@ final class InspectorPane: NSView, NSOutlineViewDataSource, NSOutlineViewDelegat
     static var snapshotScriptForTest: String { snapshotScript }
     static func stylesScriptForTest(_ path: String) -> String { stylesScript(for: path) }
 
+    /// Walks the document once, building each node's path from its parent's.
+    ///
+    /// The first version measured 127 ms on a 3,600-element page, in the page's own
+    /// process, every four seconds. Two reasons, both avoidable:
+    ///
+    /// - **`pathOf` re-walked the ancestor chain for every node**, scanning siblings at
+    ///   each level to work out an `nth-of-type` index. A child's path is its parent's plus
+    ///   one segment, so the whole thing is one downward pass if you carry it.
+    /// - **`innerText` forces layout.** It is the property that respects CSS visibility, so
+    ///   the engine has to lay the page out to answer. `textContent` does not, and a tree
+    ///   label does not need the distinction.
     private static let snapshotScript = """
     (function () {
       var budget = \(maxNodes);
-      function pathOf(el) {
-        var parts = [];
-        while (el && el.nodeType === 1 && parts.length < 40) {
-          var seg = el.tagName.toLowerCase();
-          if (el.id) { parts.unshift(seg + '#' + el.id); break; }
-          var p = el.parentNode;
-          if (p) {
-            var same = [];
-            for (var i = 0; i < p.children.length; i++)
-              if (p.children[i].tagName === el.tagName) same.push(p.children[i]);
-            if (same.length > 1) seg += ':nth-of-type(' + (same.indexOf(el) + 1) + ')';
-          }
-          parts.unshift(seg);
-          el = el.parentElement;
-        }
-        return parts.join(' > ');
-      }
-      function label(el) {
+
+      function label(el, text) {
         var s = '<' + el.tagName.toLowerCase();
         if (el.id) s += ' id="' + el.id + '"';
         var cls = (el.getAttribute && el.getAttribute('class')) || '';
         if (cls) s += ' class="' + cls.slice(0, 48) + '"';
         s += '>';
-        if (el.children.length === 0) {
-          var t = (el.textContent || '').trim().replace(/\\s+/g, ' ');
-          if (t) s += ' ' + t.slice(0, 40);
-        }
+        if (text) s += ' ' + text;
         return s;
       }
-      function walk(el, depth) {
+
+      // Indices for one parent's children, computed in a single pass over them.
+      function segmentsFor(parent) {
+        var kids = parent.children, counts = {}, totals = {}, segs = new Array(kids.length);
+        for (var i = 0; i < kids.length; i++) {
+          var tag = kids[i].tagName;
+          totals[tag] = (totals[tag] || 0) + 1;
+        }
+        for (var j = 0; j < kids.length; j++) {
+          var el = kids[j], t = el.tagName, lower = t.toLowerCase();
+          counts[t] = (counts[t] || 0) + 1;
+          segs[j] = el.id ? lower + '#' + el.id
+                  : (totals[t] > 1 ? lower + ':nth-of-type(' + counts[t] + ')' : lower);
+        }
+        return segs;
+      }
+
+      function walk(el, depth, path) {
         if (budget-- <= 0 || depth > \(maxDepth)) return null;
-        var node = { label: label(el), path: pathOf(el), children: [] };
+        var text = '';
+        if (el.children.length === 0) {
+          // textContent, not innerText: innerText forces a layout pass.
+          text = (el.textContent || '').trim().replace(/\\s+/g, ' ').slice(0, 40);
+        }
+        var node = { label: label(el, text), path: path, children: [] };
+        var segs = segmentsFor(el);
         for (var i = 0; i < el.children.length; i++) {
-          var c = walk(el.children[i], depth + 1);
+          var seg = segs[i];
+          // An id is unique, so a path may restart there rather than carrying the chain.
+          var childPath = seg.indexOf('#') >= 0 ? seg : (path ? path + ' > ' + seg : seg);
+          var c = walk(el.children[i], depth + 1, childPath);
           if (c) node.children.push(c);
         }
         return node;
       }
-      return JSON.stringify(walk(document.documentElement, 0));
+
+      return JSON.stringify(walk(document.documentElement, 0, 'html'));
     })();
     """
 
