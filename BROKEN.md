@@ -108,6 +108,44 @@ demonstrated way to block ads in this browser. Deleting it removed the one thing
 
 ---
 
+## 8. Adblock Plus's own UI refuses to render for a browser it does not recognise
+
+**Severity:** low, and it is ABP's constraint rather than Kestrel's.
+
+**Fixed on this side:** the page used to come up blank. ABP's options page is a shell whose
+only content is an iframe of `desktop-options.html`, and WebKit refuses that subframe unless
+the add-on declared `web_accessible_resources` — stricter than Firefox or Chrome, and ABP
+declares none. The tab now navigates to the inner page itself when a lone iframe fails, so
+the content loads with nothing loosened: no manifest rewriting, nothing of the add-on's made
+readable by arbitrary web pages.
+
+The check has to be repeated, not made once: at `didFinish` the iframe carries only
+`data-src`, because ABP's `options.js` is deferred and sets the real `src` a beat later.
+
+**What remains, measured:**
+
+    options page in a tab: …/desktop-options.html  nodes=8
+      getBrowserInfo=undefined
+      ua=Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:141.0) Gecko/20100101 Firefox/141.0
+      text=Your browser version is no longer supported. Please upgrade
+
+The page renders and then refuses. It is not the user agent — that is now a clean Firefox
+string with no AppleWebKit prefix, set through `customUserAgent` on the web view Kestrel
+creates. It is `browser.runtime.getBrowserInfo`, which is **undefined**: a Firefox-specific
+API WebKit's runtime does not implement, so ABP has no version to compare and defaults to
+unsupported.
+
+**Where to start, if it is worth it:** `getBrowserInfo` could be shimmed by injecting a
+small script into add-on pages that defines it. That is spoofing an API the engine does not
+have, on the add-on's behalf, and it would need to be weighed rather than done casually —
+an add-on told it is Firefox 141 may then take other Gecko-only paths that fail less
+visibly than this one does.
+
+**uBO Lite is unaffected** — its dashboard is a page rather than a frame shell and renders
+normally, so the fixes here cost it nothing.
+
+---
+
 ## 4. Network panel: `timing` rows have no headers
 
 **Severity:** none — a documented limit of the platform, listed here so it is not

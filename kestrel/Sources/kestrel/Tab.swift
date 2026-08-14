@@ -189,8 +189,15 @@ final class Tab: NSObject {
             cfg.userContentController.addUserScript(SessionStore.captureScript())
             cfg.userContentController.addUserScript(PageWebView.contextTargetScript())
             cfg.userContentController.addUserScript(NetworkMonitor.captureScript())
-            let wv = WKWebView(frame: container.bounds, configuration: cfg)
+            // PageWebView, like any other tab: an add-on's own page should have the same
+            // right-click Inspect as a web page.
+            let wv = PageWebView(frame: container.bounds, configuration: cfg)
             wv.autoresizingMask = [.width, .height]
+            // The whole UA string, not an appended token — see UserAgent.firefoxFull.
+            // `applicationNameForUserAgent` can only append to WebKit's prefix, so the page
+            // ends up claiming to be AppleWebKit *and* Gecko, which Adblock Plus reads as
+            // an unsupported browser and refuses to render for.
+            wv.customUserAgent = UserAgent.firefoxFull
             webView = wv
             container.addSubview(wv)
             loadCurrent(into: wv)

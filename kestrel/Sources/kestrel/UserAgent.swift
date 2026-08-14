@@ -44,4 +44,19 @@ enum UserAgent {
     static var extensionApplicationName: String {
         "Gecko/20100101 Firefox/\(firefoxVersion)"
     }
+
+    /// A complete Firefox UA, with no AppleWebKit prefix.
+    ///
+    /// `applicationNameForUserAgent` can only *append* to WebKit's own prefix, so an
+    /// add-on page ends up claiming to be both AppleWebKit and Gecko — a browser no
+    /// detection script has ever seen. Adblock Plus's options page reads that and refuses
+    /// with "your browser version is no longer supported". A web view Kestrel creates
+    /// itself can set the whole string, and an add-on's own page is exactly that case.
+    ///
+    /// Only ever sent to an add-on's own pages. Web pages keep the Safari token, which is
+    /// the truthful answer for the engine rendering them.
+    static var firefoxFull: String {
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:\(firefoxVersion)) "
+        + "Gecko/20100101 Firefox/\(firefoxVersion)"
+    }
 }

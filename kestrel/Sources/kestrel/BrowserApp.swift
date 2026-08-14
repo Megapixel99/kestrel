@@ -1021,6 +1021,54 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
         }
     }
 
+    /// Some add-ons ship an options page that is only a shell around an iframe of another
+    /// of their own pages — Adblock Plus frames `desktop-options.html`. WebKit refuses that
+    /// subframe unless the add-on declared `web_accessible_resources`, which Firefox and
+    /// Chrome do not require, so the shell renders blank.
+    ///
+    /// Rather than rewrite the add-on's manifest to widen what any web page may read — a
+    /// security change made on the user's behalf — the tab goes to the inner page itself.
+    /// Same content, same origin, nothing loosened.
+    /// Checked more than once, because the shell's script is usually deferred: at
+    /// `didFinish` the iframe often carries only a `data-src`, and the real `src` appears a
+    /// beat later. A single look at load time sees nothing and concludes wrongly.
+    func unwrapExtensionFrame(_ tab: Tab, _ webView: WKWebView, tries: Int) {
+        let js = """
+        (function () {
+          var frames = document.querySelectorAll('iframe');
+          if (frames.length !== 1) return '';
+          var f = frames[0];
+          var src = f.getAttribute('src') || '';
+          if (!src) return '';
+          try {
+            var d = f.contentDocument;
+            if (d && d.URL !== 'about:blank') return '';   // a loaded frame is left alone
+          } catch (e) { return ''; }
+          return src;   // resolved by the browser against the tab's URL, not location
+        })();
+        """
+        webView.evaluateJavaScript(js) { [weak self] value, _ in
+            // Resolved here rather than in the page: `location.href` is not always the
+            // document's real URL — a page loaded from a string reports a masked URL — and
+            // the tab knows where it actually is.
+            guard let src = value as? String, !src.isEmpty,
+                  let url = URL(string: src, relativeTo: tab.url)?.absoluteURL,
+                  url.scheme == "webkit-extension", tab.url != url
+            else {
+                if tries > 1 {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+                        guard tab.webView === webView else { return }
+                        self?.unwrapExtensionFrame(tab, webView, tries: tries - 1)
+                    }
+                }
+                return
+            }
+            tab.url = url
+            webView.load(URLRequest(url: url))
+            self?.flash("opened the add-on's own page directly — its frame could not load")
+        }
+    }
+
     func updateReaderButton() {
         readerButton?.isHidden = !(currentTab?.readerAvailable ?? false)
         readerButton?.contentTintColor =
@@ -1395,6 +1443,7 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
             tab.restorePending = false
         }
         extensionsDidUpdate(tab, loading: false)
+        if tab.extensionConfig != nil { unwrapExtensionFrame(tab, webView, tries: 4) }
         // Is this an article? Asked on every load, so the reader button is only offered
         // where it would work.
         if !tab.readerActive {

@@ -217,6 +217,34 @@ enum ExtensionDiag {
                     }
                 }
                 print("inner page direct: \(direct ?? "no answer")")
+
+                // And through the browser's own path, which is what a user gets: the
+                // options page opened in a tab, with the blocked-frame unwrap applied.
+                let b2 = BrowserWindowController()
+                ExtensionRuntime.shared.browser = b2
+                if b2.openExtensionPage(opts) {
+                    settle(10)
+                    var shown: String?
+                    wait(12) { d in
+                        b2.currentTab?.webView?.evaluateJavaScript(
+                            """
+                            document.URL + '  nodes=' + document.body.children.length
+                              + '  getBrowserInfo=' + (function () {
+                                  var a = (typeof browser !== 'undefined') ? browser : null;
+                                  if (!a || !a.runtime) return 'no runtime';
+                                  return typeof a.runtime.getBrowserInfo;
+                                })()
+                              + '  ua=' + navigator.userAgent.slice(0, 40)
+                              + '  text=' + (document.body.innerText || '')
+                                  .trim().replace(/\\s+/g, ' ').slice(0, 60)
+                            """
+                        ) { v, _ in shown = v as? String; d() }
+                    }
+                    print("options page in a tab: \(shown ?? "no answer")")
+                } else {
+                    print("options page in a tab: openExtensionPage refused")
+                }
+                b2.window.close()
             }
 
             if ctx.errors.isEmpty {
