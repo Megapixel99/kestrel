@@ -61,6 +61,11 @@ nothing setting its flag until now.
 against budget, each rung of the ladder with its share, and every tab's footprint, pid,
 restore latency and visit count. It re-renders on the browser's own tick and counts itself.
 
+**Network capture is off until you open a panel.** Wrapping `fetch`/`XHR` and observing
+every resource costs the page 15–40% more per request — measured, 300 requests — and every
+observed resource is an IPC message. A diagnostic that charges its cost to every page whether
+or not anyone is looking is the mistake DEBUGGING.md §2 is about.
+
 **The network panel** (⌥⌘E) lists every request with status, method, domain, size and
 timing, and shows headers for the ones where headers exist. WKWebView has no request
 observer, so it is assembled from three sources and labels each row with which one it came

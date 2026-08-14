@@ -1154,6 +1154,7 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
             ) { [weak self] _ in MainActor.assumeIsolated { self?.layoutDevPanel() } }
         }
         devPanel?.inspect(path: path, in: currentTab)
+        NetworkMonitor.setCapturing(true, tabs: tabs)
         layoutDevPanel()
     }
 
@@ -1195,6 +1196,8 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
 
     @objc func openNetworkPanel() {
         if networkWindow == nil { networkWindow = NetworkWindowController() }
+        // Instrumentation starts when someone opens the panel, not when the browser does.
+        NetworkMonitor.setCapturing(true, tabs: tabs)
         networkWindow?.show()
     }
 

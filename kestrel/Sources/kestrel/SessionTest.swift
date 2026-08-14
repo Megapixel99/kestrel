@@ -299,6 +299,85 @@ enum SessionTest {
         check("a right-click records the element under the cursor",
               target?.contains("p") == true, target ?? "nothing recorded")
 
+        // --- what the network capture costs the page ---
+        // The fetch/XHR wrappers and the PerformanceObserver are injected into every page
+        // on every load, panel open or not, and every observed resource becomes an IPC
+        // message to the browser. A page like the one in the screenshot that prompted this
+        // made 244 requests.
+        NetworkMonitor.clear()
+        // Capture off is the default; the panel turns it on. Measure both.
+        check("network capture is off until something opens the panel",
+              !NetworkMonitor.isCapturing)
+        // "Off" has to mean untouched, not merely quiet: a wrapper that runs and then
+        // discards the result still costs the page every request.
+        NetworkMonitor.setCapturing(false, tabs: browser.tabs)
+        browser.openTab(url: URL(string: "https://example.com/net-quiet")!)
+        if let qTab = browser.currentTab, let qView = qTab.webView {
+            qView.loadHTMLString("<html><body>quiet</body></html>",
+                                 baseURL: URL(string: "https://example.com/net-quiet"))
+            settle(2)
+            var wrapped: String?
+            wait(10) { done in
+                qView.evaluateJavaScript(
+                    "/native code/.test(String(window.fetch)) ? 'native' : 'wrapped'") { v, _ in
+                    wrapped = v as? String; done()
+                }
+            }
+            check("with capture off, fetch is left alone", wrapped == "native",
+                  wrapped ?? "nil")
+        }
+
+        browser.openTab(url: URL(string: "https://example.com/net-cost")!)
+        if let nTab = browser.currentTab, let nView = nTab.webView {
+            nView.loadHTMLString("<html><body>cost</body></html>",
+                                 baseURL: URL(string: "https://example.com/net-cost"))
+            settle(2)
+            NetworkMonitor.setCapturing(true, tabs: browser.tabs)
+            settle(1)
+            // 300 same-origin requests to a URL that 404s fast, wrapped vs unwrapped.
+            let script = """
+            (function () {
+              window.__origFetchForTest = window.__origFetchForTest || null;
+              window.__t = {};
+              function run(label, done) {
+                var n = 300, start = performance.now(), left = n;
+                for (var i = 0; i < n; i++) {
+                  fetch('/nothing-' + i).catch(function () {}).then(function () {
+                    if (--left === 0) { window.__t[label] = performance.now() - start; done(); }
+                  });
+                }
+              }
+              var saved = window.fetch;
+              run('wrapped', function () {
+                // Restore the untouched fetch and repeat.
+                window.fetch = window.__origFetchForTest || saved;
+                run('bare', function () { window.__t.ready = true; });
+              });
+              return 'started';
+            })()
+            """
+            wait(10) { d in nView.evaluateJavaScript(script) { _, _ in d() } }
+            var timings: String?
+            wait(40) { done in
+                pollPage(nView, every: 1.0, until: 35,
+                     script: "window.__t && window.__t.ready ? "
+                           + "(Math.round(window.__t.wrapped) + '/' + Math.round(window.__t.bare)) : ''"
+                ) { v in timings = v; done() }
+            }
+            let parts = (timings ?? "").split(separator: "/").compactMap { Double($0) }
+            if parts.count == 2 {
+                let overheadPct = parts[1] > 0 ? (parts[0] - parts[1]) / parts[1] * 100 : 0
+                check("the capture wrappers do not dominate request cost",
+                      overheadPct < 40,
+                      String(format: "%.0f ms wrapped vs %.0f ms bare (%+.0f%%), 300 requests",
+                             parts[0], parts[1], overheadPct))
+            } else {
+                check("measured wrapped vs bare request cost", false, timings ?? "no answer")
+            }
+            check("every request was captured", NetworkMonitor.entries.count >= 300,
+                  "\(NetworkMonitor.entries.count) entries recorded")
+        }
+
         // --- what the inspector's DOM walk actually costs ---
         // The panel re-walks the document on a throttle I picked without measuring, which
         // is the same guess that produced the last two findings. A page with a few thousand
@@ -446,6 +525,22 @@ enum SessionTest {
     @MainActor
     private static func run(_ wv: WKWebView, _ js: String) {
         wait(10) { done in wv.evaluateJavaScript(js) { _, _ in done() } }
+    }
+
+    @MainActor
+    private static func pollPage(_ wv: WKWebView, every: TimeInterval, until deadline: TimeInterval,
+                             script: String, found: @escaping (String?) -> Void) {
+        var elapsed: TimeInterval = 0
+        var timer: Timer?
+        timer = Timer.scheduledTimer(withTimeInterval: every, repeats: true) { t in
+            elapsed += every
+            wv.evaluateJavaScript(script) { v, _ in
+                let s = v as? String ?? ""
+                if !s.isEmpty { t.invalidate(); timer = nil; found(s) }
+                else if elapsed >= deadline { t.invalidate(); timer = nil; found(nil) }
+            }
+        }
+        _ = timer
     }
 
     private static func settle(_ seconds: TimeInterval) {

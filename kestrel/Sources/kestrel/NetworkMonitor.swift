@@ -76,15 +76,48 @@ enum NetworkMonitor {
         }
     }
 
+    /// Whether pages should be instrumented at all.
+    ///
+    /// Wrapping `fetch` and `XMLHttpRequest` and observing every resource costs the page
+    /// about 40% more per request — measured, 300 requests — and every observed resource
+    /// becomes an IPC message to the browser. Paying that on every page when nobody has
+    /// the panel open is the same mistake as the memory probe in DEBUGGING.md §2: a
+    /// diagnostic charging its cost to the thing being diagnosed.
+    ///
+    /// The script is still injected everywhere, because a web view's user scripts are
+    /// fixed at creation, but it does nothing until installed.
+    private(set) static var isCapturing = false
+
+    /// Turns capture on or off. Live tabs are told immediately; tabs created later read
+    /// the flag when their script runs.
+    @MainActor
+    static func setCapturing(_ on: Bool, tabs: [Tab]) {
+        isCapturing = on
+        for tab in tabs {
+            tab.webView?.evaluateJavaScript(
+                on ? "window.__kestrelNetInstall && window.__kestrelNetInstall()"
+                   : "window.__kestrelNetOn = false")
+        }
+    }
+
     /// Installed at document start in every tab.
     static func captureScript() -> WKUserScript {
         let js = """
         (function () {
-          if (window.__kestrelNet) return;
-          window.__kestrelNet = true;
+          if (window.__kestrelNetInstall) return;
           var post = function (o) {
+            if (!window.__kestrelNetOn) return;
             try { window.webkit.messageHandlers.\(messageName).postMessage(o); } catch (e) {}
           };
+
+          // Nothing is wrapped and no observer exists until this runs.
+          window.__kestrelNetInstall = function () {
+            if (window.__kestrelNetOn) return;
+            window.__kestrelNetOn = true;
+            install();
+          };
+
+          function install() {
 
           // --- everything the engine fetched, with timing but no headers ---
           try {
@@ -185,6 +218,9 @@ enum NetworkMonitor {
               return send.apply(this, arguments);
             };
           }
+          }
+
+          if (\(isCapturing ? "true" : "false")) window.__kestrelNetInstall();
         })();
         """
         return WKUserScript(source: js, injectionTime: .atDocumentStart,
