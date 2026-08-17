@@ -63,14 +63,16 @@ column is the one to distrust.
 
 | workload | policy | attributed | **measured** | over budget (attr → measured) | state lost | p95 restore |
 |---|---|---|---|---|---|---|
-| light pages, 150 MB budget | none | 319.9 M | _not recorded_ | 88% → ?% | 0 | 3555 ms |
-| | discardlru | 104.6 M | _not recorded_ | 0% → ?% | 17 | 3546 ms |
-| | kestrel | 121.7 M | _not recorded_ | 0% → ?% | 14 | 3541 ms |
+| light pages, 150 MB budget | none | 256.6 M | **255.3 M** | 85% → 85% | 0 | 3495 ms |
+| | discardlru | 103.7 M | **414.8 M** | 12% → 90% | 19 | 3448 ms |
+| | kestrel | 124.7 M | **345.9 M** | 18% → 85% | 15 | 3447 ms |
 | heavy pages, 800 MB budget | none | 975.9 M | **974.9 M** | 82% → 82% | 0 | 321 ms |
 | | discardlru | 547.1 M | **802.2 M** | 2% → 62% | 8 | 363 ms |
 | | kestrel | 587.9 M | **788.1 M** | 2% → 48% | 6 | 334 ms |
 
 At a budget that clears the engine's hibernation floor, Kestrel is **1.24x** below unmanaged (measured totals) and destroys **6** tabs, where discard-LRU destroys **8**.
+
+Below the floor it inverts. The 150 MB budget is unreachable for 11 tabs — the COLD rung alone needs 429 MB — and both managing policies end up **worse than doing nothing**: Kestrel 1.35x and discard-LRU 1.62x above unmanaged, having destroyed 15 and 19 tabs to get there. See RESULTS-ENGINE.md.
 
 ## Why the two halves disagree
 

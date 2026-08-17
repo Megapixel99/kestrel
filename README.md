@@ -37,10 +37,20 @@ list entirely.
 > budget" is really 48%. What survives is the comparison: Kestrel holds 788 MB against
 > discard-LRU's 802 MB while destroying 6 tabs to its 8. See the correction at the end of
 > [RESULTS-ENGINE.md](RESULTS-ENGINE.md).
+>
+> **The light-pages run inverts.** Re-measured, an 11-tab workload on a 150 MB budget is
+> **1.35× worse than doing nothing** (345.9 MB vs 255.3 MB), and discard-LRU is 1.62× worse.
+> That budget is 2.9× below this design's own feasibility floor — 11 parked tabs need 429 MB
+> — so the scheduler thrashes, and stranded processes cost more than the parked pages save.
+> The old 2.4–2.6× for this run is retracted in full.
 
-**Then it was built on a real engine.** The memory headline shrank to 1.4–2.6×, because the
+**Then it was built on a real engine.** The memory headline shrank, then went negative on one
+of the two workloads, because the
 simulation priced a hibernated tab at 32 KB and WebKit charges 39 MB — a renderer process cannot
 be terminated on request. That sets a floor: `budget > live working set + (39 MB x parked tabs)`.
+
+Below the floor it is not merely less effective — it is worse than unmanaged, because every
+demotion strands a WebContent process WebKit will not reclaim on request.
 
 **Above that floor the design does what it promised**: at a 800 MB budget over 10 heavy tabs it
 holds the bound with **zero destroyed tabs**, where discard-LRU destroys 5 for 1.5% less memory.
@@ -111,8 +121,10 @@ benchmark bootstraps from all 17, so 174 MB is the right figure here.
 
 *In simulation* the scheduler result holds at **7.9–11.5× less memory with zero state-losing
 reloads** across every one of them, and what varies is how much the per-tab cap matters, which
-tracks the tail. On a real engine it delivers 2.4–2.6× and reduces rather than eliminates state
-loss — see [RESULTS-ENGINE.md](RESULTS-ENGINE.md) for why the simulated figure was optimistic.
+tracks the tail. On a real engine it delivers 1.24× on heavy pages above the floor, and 1.35×
+*worse* than unmanaged on light pages below it, while reducing rather than eliminating state
+loss — see [RESULTS-ENGINE.md](RESULTS-ENGINE.md) for why the simulated figure was optimistic
+and why the light-pages figure went negative.
 
 ```bash
 cd bench/b4_scheduler && RSS_FILE=firefox_content_rss_mb.txt BUDGET_GB=3 python3 evaluate.py

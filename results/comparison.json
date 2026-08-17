@@ -280,36 +280,45 @@
     "light pages, 150 MB budget": {
       "none": {
         "policy": "none",
-        "mean_mb": "319.9",
-        "peak_mb": "368.6",
-        "over_budget_pct": "88",
+        "mean_mb": "256.6",
+        "peak_mb": "317.0",
+        "over_budget_pct": "85",
         "restores": "10",
-        "p95_restore_ms": "3555",
+        "p95_restore_ms": "3495",
         "state_lost": "0",
         "demotions": "0",
-        "gave_up": "0"
+        "gave_up": "0",
+        "measured_mean_mb": "255.3",
+        "measured_peak_mb": "309.0",
+        "measured_over_pct": "85"
       },
       "discardlru": {
         "policy": "discardlru",
-        "mean_mb": "104.6",
-        "peak_mb": "140.0",
-        "over_budget_pct": "0",
-        "restores": "19",
-        "p95_restore_ms": "3546",
-        "state_lost": "17",
-        "demotions": "17",
-        "gave_up": "0"
+        "mean_mb": "103.7",
+        "peak_mb": "183.0",
+        "over_budget_pct": "12",
+        "restores": "20",
+        "p95_restore_ms": "3448",
+        "state_lost": "19",
+        "demotions": "19",
+        "gave_up": "5",
+        "measured_mean_mb": "414.8",
+        "measured_peak_mb": "650.0",
+        "measured_over_pct": "90"
       },
       "kestrel": {
         "policy": "kestrel",
-        "mean_mb": "121.7",
-        "peak_mb": "144.0",
-        "over_budget_pct": "0",
+        "mean_mb": "124.7",
+        "peak_mb": "203.0",
+        "over_budget_pct": "18",
         "restores": "18",
-        "p95_restore_ms": "3541",
-        "state_lost": "14",
-        "demotions": "44",
-        "gave_up": "1"
+        "p95_restore_ms": "3447",
+        "state_lost": "15",
+        "demotions": "45",
+        "gave_up": "7",
+        "measured_mean_mb": "345.9",
+        "measured_peak_mb": "530.0",
+        "measured_over_pct": "85"
       }
     },
     "heavy pages, 800 MB budget": {

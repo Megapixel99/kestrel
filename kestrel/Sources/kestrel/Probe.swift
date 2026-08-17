@@ -26,10 +26,22 @@ enum Probe {
             wv.loadHTMLString(syntheticPage(index: i),
                               baseURL: URL(string: "https://example\(i).invalid/"))
             waitRunLoop(seconds: 3.5)
+            // Ask the view for its process. The diff below is the fallback, and it is
+            // how every rung cost this project has published was attributed: `.first` on
+            // an unordered set of whatever appeared. Usually right here — one view at a
+            // time, 3.5 s apart — but "usually" is not a basis for a published number.
+            let direct = MemoryProbe.privateProcessIdentifier(of: wv)
             let newPids = Set(currentPids()).subtracting(before)
-            guard let pid = newPids.first else {
+            guard let pid = direct ?? newPids.first else {
                 log("  tab \(i): could not identify a process; skipping")
                 continue
+            }
+            if let direct, newPids.count > 1 {
+                log("  tab \(i): \(newPids.count) processes appeared; the view names "
+                    + "pid \(direct)")
+            } else if direct == nil {
+                log("  tab \(i): view would not name its process; fell back to a diff of "
+                    + "\(newPids.count)")
             }
             let mb = mbOf(pid)
             log(String(format: "  tab %d -> pid %d, LIVE = %.1f MB", i, pid, mb))
@@ -57,7 +69,16 @@ enum Probe {
         let state = subject.view.interactionState as? Data
         subject.view.load(URLRequest(url: URL(string: "about:blank")!))
         waitRunLoop(seconds: 8)
-        let coldMB = mbOf(subject.pid)
+        // Navigating away can move the page to a different process, and this measured the
+        // original pid regardless — so a COLD figure could be the *old* process's
+        // footprint while the view lived somewhere else entirely.
+        let coldPid = MemoryProbe.privateProcessIdentifier(of: subject.view) ?? subject.pid
+        if coldPid != subject.pid {
+            log(String(format: "  note: navigating away moved the view from pid %d to %d; "
+                             + "the old process still holds %.1f MB",
+                       subject.pid, coldPid, mbOf(subject.pid)))
+        }
+        let coldMB = mbOf(coldPid)
 
         log("one tab through the ladder (pid \(subject.pid)):")
         log(String(format: "  LIVE  %7.1f MB", liveMB))
@@ -79,12 +100,15 @@ enum Probe {
         }
         let restoreMs = (waiter.finishedAt ?? Date()).timeIntervalSince(t0) * 1000
         waitRunLoop(seconds: 2)
-        let restoredMB = mbOf(subject.pid)
+        // Restoring can move the view again; ask rather than assume.
+        let restoredPid = MemoryProbe.privateProcessIdentifier(of: subject.view)
+                       ?? coldPid
+        let restoredMB = mbOf(restoredPid)
         log(String(format: "  restore COLD -> LIVE: %.0f ms to didFinish, back to %.1f MB\n",
                    restoreMs, restoredMB))
 
         // ---- does releasing the blanked view get below the process baseline? ----
-        let coldPid = subject.pid
+        let releasedPid = coldPid
         autoreleasepool {
             var v: WKWebView? = subject.view
             v?.navigationDelegate = nil
@@ -92,16 +116,16 @@ enum Probe {
             v?.removeFromSuperview()
             v = nil
         }
-        tabs.removeAll { $0.pid == coldPid }
+        tabs.removeAll { $0.pid == releasedPid }
         var died = false
         for _ in 0..<60 {
             waitRunLoop(seconds: 0.5)
-            if !MemoryProbe.isAlive(coldPid) { died = true; break }
+            if !MemoryProbe.isAlive(releasedPid) { died = true; break }
         }
         log(died
             ? "  releasing the blanked view DID free its process (baseline recovered)"
             : String(format: "  releasing the blanked view left the process alive at %.1f MB",
-                     mbOf(coldPid)))
+                     mbOf(releasedPid)))
         log("")
 
         log("Implication for COLD: WebKit exposes no public way to terminate a")

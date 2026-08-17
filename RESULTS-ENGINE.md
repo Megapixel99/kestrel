@@ -160,7 +160,9 @@ the diagnosis says matters — how much a tab compresses from LIVE to COLD.
 | **Kestrel** | **411.5 MB** | 482 MB | 0% | **7** |
 
 **The simulation's headline does not survive.** It claimed 7.9–11.5× less memory than unmanaged
-with *zero* state-losing reloads. The engine gives **2.4–2.6×**, and state losses are reduced by
+with *zero* state-losing reloads. The engine appeared to give **2.4–2.6×** — a figure the
+correction at the end of this file retracts entirely: re-measured, this run is 1.35× *worse*
+than unmanaged. State losses are reduced by
 18–42% rather than eliminated.
 
 ### Why, precisely
@@ -353,6 +355,68 @@ attributed numbers it looked marginally worse on memory and better only on state
 comparative case for the ladder is stronger than the old figures suggested; the absolute
 case is weaker.
 
-**Not re-measured yet:** the per-rung costs (LIVE 128 MB, WARM 106 MB, COLD 39 MB) and the
-light-pages run. `probe` drives one tab at a time, so its attribution had far fewer ways to
-go wrong, but that is an argument rather than a measurement.
+### The per-rung costs were right
+
+Re-measured with the web view naming its own process, six tabs, same synthetic page:
+
+    LIVE    128.0 MB
+    WARM    106.0 MB   (83% of live)
+    COLD     39.0 MB   (30% of live)
+    restore COLD -> LIVE: 87 ms
+
+Identical to the published figures, to the decimal. Two warnings the re-measure was watching
+for did not fire: the pid diff was never ambiguous (one tab at a time, 3.5 s apart, exactly
+one WebContent process each), and navigating to `about:blank` did **not** move the page to a
+different process -- which was the way the 39 MB COLD figure could have been some abandoned
+process's footprint rather than the parked tab's. The feasibility floor built on 39 MB stands
+unchanged.
+
+This is worth stating plainly because the rest of this correction is bad news: the ladder's
+own physics were measured correctly all along. What was wrong was the claim about what the
+ladder does to a browser.
+
+### The light-pages run: the ladder made memory worse
+
+The same re-measurement applied to light pages inverts the published result. 11 mixed-weight
+real sites, 150 MB budget, 40 events:
+
+| policy | published (attributed) | **measured** | vs unmanaged | over budget | tabs destroyed |
+|---|---|---|---|---|---|
+| none | 319.9 MB | **255.3 MB** | -- | 85% | 0 |
+| discard-LRU | 104.6 MB | **414.8 MB** | **1.62x worse** | 90% | 19 |
+| Kestrel | 121.7 MB | **345.9 MB** | **1.35x worse** | 85% | 15 |
+
+Attribution accounted for 100% of the unmanaged run and only **25%** and **36%** of the
+managed ones. The policies were reporting roughly a quarter of what they actually held, and
+the error was largest exactly where the design looked best.
+
+**This is not a new failure mode -- it is this design's own predicted one, finally measured.**
+The feasibility rule in DESIGN.md states `budget > live working set + (39 MB x parked tabs)`.
+Eleven tabs at a 39 MB COLD floor need **429 MB** before a single page is displayed; this run
+was given **150 MB**, 2.9x below its own floor. The budget was unreachable by construction,
+and the scheduler says so in the logs: `gave_up` fires 5 times for discard-LRU and 7 times for
+Kestrel.
+
+What DESIGN.md predicted below the floor was *degradation toward discard-LRU*. What actually
+happens is worse: **degradation below doing nothing.** A demotion leaves the old WebContent
+process alive; the restore spawns another; 45 demotions and 18 restores over 40 events churn
+processes faster than WebKit reclaims them. Measured peak reached 530 MB for Kestrel and
+650 MB for discard-LRU, against 309 MB for the run that managed nothing at all -- on the
+workload whose whole point was that the pages were light.
+
+**The honest summary of the engine work is therefore workload-dependent, and one side of it
+is negative:**
+
+| workload | budget vs. floor | Kestrel vs unmanaged |
+|---|---|---|
+| heavy pages, 800 MB budget | above the floor | **1.24x better** |
+| light pages, 150 MB budget | 2.9x below the floor | **1.35x worse** |
+
+The ladder helps when the budget is reachable and hurts when it is not, because below the
+floor the process churn costs more than the parked pages save. The old numbers hid this
+completely: they reported 2.6x better on precisely the run where the design was 1.35x worse.
+
+The correct fix is not a scheduler tweak. A browser that cannot meet its budget should refuse
+the budget -- surface the floor, name the number of tabs it can hold, and stop demoting --
+rather than thrash against a target it can prove is unreachable. That is not implemented; it
+is recorded in BROKEN.md.

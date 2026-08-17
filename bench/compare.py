@@ -206,6 +206,25 @@ def write_markdown(data):
               f"**{heavy.get('discardlru',{}).get('state_lost','?')}**.")
             A("")
 
+        light = data["engine"].get("light pages, 150 MB budget")
+        if light and "none" in light and "kestrel" in light:
+            def total(row):
+                return float(row.get("measured_mean_mb") or row.get("mean_mb") or 1)
+            k = total(light["none"]) / max(1.0, total(light["kestrel"]))
+            d = total(light["none"]) / max(1.0, total(light["discardlru"]))
+            if k < 1.0:
+                # 11 tabs x the 39 MB COLD floor is 429 MB, so a 150 MB budget is 2.9x
+                # below what the ladder can physically reach. Below the floor the demote
+                # /restore churn strands processes and costs more than it parks.
+                A(f"Below the floor it inverts. The 150 MB budget is unreachable for 11 "
+                  f"tabs — the COLD rung alone needs 429 MB — and both managing policies "
+                  f"end up **worse than doing nothing**: Kestrel {fmt(1/k,2)}x and "
+                  f"discard-LRU {fmt(1/d,2)}x above unmanaged, having destroyed "
+                  f"{light['kestrel'].get('state_lost')} and "
+                  f"{light['discardlru'].get('state_lost')} tabs to get there. "
+                  f"See RESULTS-ENGINE.md.")
+                A("")
+
     A("## Why the two halves disagree")
     A("")
     A("| | simulated | measured on WebKit |")

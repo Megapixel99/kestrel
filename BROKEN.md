@@ -1,7 +1,7 @@
 # Open problems
 
-*Last swept 2026-08-13. Items 1–3 were fixed in that pass; 4–6 are limits or debts, not
-defects.*
+*Last swept 2026-08-16. Items 1–3 and 9 were fixed in earlier passes; 4–6 are limits or
+debts, not defects; 10 is a real defect found by re-measuring the benchmarks.*
 
 What is broken, what has already been ruled out, and where to start. DEBUGGING.md is the
 record of bugs that were *fixed*; this is the list that is still open, written so picking one
@@ -280,6 +280,27 @@ compiled into WebKit cost approximately nothing per tab — and it was deleted a
 other five built-ins. The measurement stands; the code that produced it does not. §6 is
 annotated in place, and `extmem` measures what an installed add-on costs instead, but a
 reader following the design's argument will hit a claim whose implementation is gone.
+
+---
+
+## 10. The scheduler thrashes against a budget it can prove is unreachable
+
+**Severity:** real, and it makes the browser worse than having no scheduler at all.
+
+The feasibility floor is `budget > live working set + (39 MB × parked tabs)`. Nothing enforces
+it. Give the scheduler 11 tabs and a 150 MB budget — 2.9× below the 429 MB those tabs need at
+the COLD rung — and it demotes 45 times over 40 events, restores 18, and lands at **345.9 MB
+measured against 255.3 MB for doing nothing** (discard-LRU: 414.8 MB). Each demotion strands a
+WebContent process WebKit keeps alive; each restore spawns a fresh one; the churn costs more
+than the parked pages save.
+
+The scheduler already detects it — `gave_up` fires 7 times in that run — and then carries on
+demoting anyway. What it should do instead: compute the floor from the tab count, and when the
+budget is below it, stop demoting and say so in the UI ("this budget can hold 3 tabs"). A
+browser that can prove its target is unreachable should refuse the target rather than thrash
+at it.
+
+Measured in `results/engine/bench_*.txt`; written up at the end of RESULTS-ENGINE.md.
 
 ---
 
