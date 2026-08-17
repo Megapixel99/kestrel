@@ -1013,6 +1013,16 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
     /// Same technique as at tab creation — diff the process list across the event — but
     /// applied to navigation, and restricted to processes younger than the browser.
     func reidentifyProcess(for tab: Tab) {
+        // The web view knows. Ask it before resorting to inference.
+        if let wv = tab.webView,
+           let direct = MemoryProbe.privateProcessIdentifier(of: wv) {
+            if tab.pid != direct {
+                tab.pid = direct
+                tab.footprintKnown = true
+                sampleMemory()
+            }
+            return
+        }
         let before = ourWebContentPids()
         let claimed = Set(tabs.compactMap { $0 === tab ? nil : $0.pid })
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self, weak tab] in

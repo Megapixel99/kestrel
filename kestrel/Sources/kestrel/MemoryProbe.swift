@@ -1,4 +1,5 @@
 import Foundation
+import WebKit
 
 /// Reads real memory for the WebKit content processes backing our tabs.
 ///
@@ -146,6 +147,47 @@ extension MemoryProbe {
         default: hms = f[0]
         }
         return days * 86_400 + hms
+    }
+
+    /// The pid of a web view's content process, asked for directly.
+    ///
+    /// `WKWebView` publishes no process identifier, which is why this project has spent its
+    /// life diffing `ps` output around tab creation and hoping. That guess is wrong more
+    /// often than it looked: WebKit spawns several processes at once, the diff picks one
+    /// arbitrarily, and the tab then reports that figure for good. A browser was observed
+    /// reporting 52 MB for a page whose process held 511 MB.
+    ///
+    /// `_webProcessIdentifier` is private API. Using it is a deliberate trade: this is a
+    /// research browser measuring memory, the measurement is the entire point, and a
+    /// guessed pid makes every per-tab number unfalsifiable. It is called defensively —
+    /// `responds(to:)` first, `nil` on anything unexpected — and the `ps`-diffing path
+    /// remains as a fallback, so the browser still works if Apple removes it.
+    ///
+    /// It is *not* used for the whole-browser total, which is summed from the process list
+    /// and needs no attribution at all.
+    static func privateProcessIdentifier(of webView: WKWebView) -> Int32? {
+        let key = "_webProcessIdentifier"
+        guard webView.responds(to: NSSelectorFromString(key)) else { return nil }
+        guard let boxed = webView.value(forKey: key) as? NSNumber else { return nil }
+        let pid = boxed.int32Value
+        // 0 means the content process has not launched yet — a fresh web view before its
+        // first load. Not an error, just not an answer.
+        return pid > 0 ? pid : nil
+    }
+
+    /// Every WebContent process this process could plausibly have started, summed.
+    ///
+    /// Needs no per-tab attribution, which is the point: attribution picks one pid per tab
+    /// out of however many WebKit spawned, and any process no tab claimed is invisible to
+    /// a per-tab sum. A whole-browser total cannot miss a process it never guessed about.
+    ///
+    /// `since` is how long this process has been running; anything older belongs to some
+    /// other application.
+    static func ourFootprintTotal(since uptime: TimeInterval) -> (bytes: Int64, procs: Int) {
+        let cutoff = Int(uptime) + 3
+        let ours = webContentPidsWithAge().filter { $0.age <= cutoff }
+        let bytes = ours.reduce(Int64(0)) { $0 + (footprint(pid: $1.pid) ?? 0) }
+        return (bytes, ours.count)
     }
 
     static func webContentPids() -> [Int32] {

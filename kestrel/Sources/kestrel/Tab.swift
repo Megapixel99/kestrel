@@ -253,14 +253,35 @@ final class Tab: NSObject {
             // Identify the new WebContent process so we can measure this tab. Both the
             // `ps` call and the diff run off the main thread; only the assignment
             // hops back.
+            // Ask the web view directly first. The pid-diffing below is the fallback for
+            // when that private property is unavailable — it picks arbitrarily among
+            // however many processes WebKit spawned at once, which is how a tab ends up
+            // reporting another page's memory.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                guard let self, let wv = self.webView else { return }
+                if let direct = MemoryProbe.privateProcessIdentifier(of: wv) {
+                    self.pid = direct
+                    self.footprintKnown = true
+                }
+            }
             DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 1.5) { [weak self] in
                 let after = Set(MemoryProbe.webContentPids())
                 Tab.lastKnownPids = after
                 let found = after.subtracting(before).first
-                DispatchQueue.main.async {
-                if let found { self?.pid = found; self?.footprintKnown = true }
-                else { self?.footprintKnown = false }
-            }
+                    DispatchQueue.main.async {
+                    guard let self else { return }
+                    // A pid the web view gave us outranks anything inferred from ps.
+                    if let wv = self.webView,
+                       let direct = MemoryProbe.privateProcessIdentifier(of: wv) {
+                        self.pid = direct
+                        self.footprintKnown = true
+                    } else if let found {
+                        self.pid = found
+                        self.footprintKnown = true
+                    } else {
+                        self.footprintKnown = false
+                    }
+                }
             }
         } else if state == .cold, let wv = webView {
             if let sessionImage { wv.interactionState = sessionImage }

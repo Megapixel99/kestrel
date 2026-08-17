@@ -35,11 +35,14 @@ enum Benchmark {
         for (i, u) in urls.enumerated() { tabs.append(Tab(id: i, url: u)) }
 
         var samples: [Int64] = []
+        var measured: [Int64] = []
         var restores: [Double] = []
+        // Everything this process spawned is younger than this.
+        let startedAt = Date()
         var trace = Trace(seed: 20260811, n: urls.count)
 
         log("# policy=\(policy) budget=\(budgetMB)MB tabs=\(urls.count) events=\(events)")
-        log("# event tab state_before total_mb restore_ms")
+        log("# event tab state_before attributed_mb measured_mb procs restore_ms")
 
         for e in 0..<events {
             let idx = trace.next()
@@ -79,16 +82,31 @@ enum Benchmark {
             settle(seconds: 0.8)
 
             // Headless: measure synchronously, accuracy matters more than latency.
+            //
+            // Two totals, deliberately. The attributed one is what this benchmark has
+            // always reported: one pid per tab, chosen arbitrarily when WebKit spawns
+            // several at once, and blind to any process no tab claimed. The measured one
+            // sums every process this run started. Where they disagree, the attributed
+            // figure is the one to distrust — a browser reported 52 MB for a page whose
+            // process held 511 MB, which is what prompted this.
             let total = tabs.reduce(Int64(0)) { $0 + $1.measureNow() }
+            let real = MemoryProbe.ourFootprintTotal(
+                since: Date().timeIntervalSince(startedAt))
             samples.append(total)
-            log(String(format: "%d %d %@ %.1f %.0f", e, idx, before.description,
-                       Double(total) / 1_048_576, ms))
+            measured.append(real.bytes)
+            log(String(format: "%d %d %@ %.1f %.1f %d %.0f", e, idx, before.description,
+                       Double(total) / 1_048_576, Double(real.bytes) / 1_048_576,
+                       real.procs, ms))
         }
 
         let mb = { (v: Int64) in Double(v) / 1_048_576 }
         let mean = samples.isEmpty ? 0 : Double(samples.reduce(0, +)) / Double(samples.count) / 1_048_576
         let peak = mb(samples.max() ?? 0)
         let over = samples.filter { $0 > sched.budgetBytes }.count
+        let meanMeasured = measured.isEmpty ? 0
+            : Double(measured.reduce(0, +)) / Double(measured.count) / 1_048_576
+        let peakMeasured = mb(measured.max() ?? 0)
+        let overMeasured = measured.filter { $0 > sched.budgetBytes }.count
         let sortedR = restores.sorted()
         let p95 = sortedR.isEmpty ? 0 : sortedR[min(sortedR.count - 1, Int(Double(sortedR.count) * 0.95))]
 
@@ -99,7 +117,17 @@ enum Benchmark {
             + "restores=\(restores.count) "
             + "p95_restore_ms=\(String(format: "%.0f", p95)) "
             + "state_lost=\(sched.stateLosses) "
-            + "demotions=\(sched.demotions) gave_up=\(sched.gaveUp)")
+            + "demotions=\(sched.demotions) gave_up=\(sched.gaveUp) "
+            + "measured_mean_mb=\(String(format: "%.1f", meanMeasured)) "
+            + "measured_peak_mb=\(String(format: "%.1f", peakMeasured)) "
+            + "measured_over_pct=\(String(format: "%.0f", 100.0 * Double(overMeasured) / Double(max(1, measured.count))))")
+        // The gap between the two is the finding, not a footnote.
+        if meanMeasured > 0 {
+            let ratio = meanMeasured / max(1, mean)
+            log(String(format: "# attribution: tabs accounted for %.0f%% of what this run "
+                             + "actually held (%.1f MB attributed, %.1f MB measured)",
+                       100.0 / max(0.01, ratio), mean, meanMeasured))
+        }
         exit(0)
     }
 

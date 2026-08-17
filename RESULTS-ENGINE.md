@@ -281,3 +281,60 @@ implemented in [`kestrel/Sources/kestrel/Scheduler.swift`](kestrel/Sources/kestr
 The parts that live in the *engine* — heap compaction, cheap frozen tabs, process teardown —
 cannot be built on top of an engine that doesn't offer them. That is the sharpest thing this
 exercise established, and it was not visible from any amount of simulation.
+
+---
+
+## Correction: the per-tab totals undercounted, and by different amounts per policy
+
+*Added 2026-08-14, after a screen recording showed the browser reporting 52 MB for a page
+whose content process held 511 MB.*
+
+Every figure above was a **per-tab attributed sum**: one process id per tab, claimed by
+diffing `ps` output around tab creation. Two things are wrong with that. WebKit spawns
+several content processes at once and the diff picks one arbitrarily. And a process that no
+tab claims — including one left behind when a tab is demoted — is counted as nothing.
+
+The benchmark now records both the attributed sum and the browser's real footprint (every
+WebContent process younger than the run, summed, which needs no attribution). Re-run,
+heavy pages, 800 MB budget, 40 events:
+
+| policy | attributed | **measured** | tabs accounted for | over budget: attributed → measured |
+|---|---|---|---|---|
+| none | 933.3 MB | **973.0 MB** | 96% | 82% → 82% |
+| discard-LRU | 547.8 MB | **804.3 MB** | 68% | 2% → **62%** |
+| Kestrel | 571.3 MB | **761.6 MB** | 75% | 2% → **42%** |
+
+**The error is not uniform, and it favours exactly the policies this benchmark exists to
+promote.** With no policy, every process belongs to a live tab and attribution captures 96%.
+Demote tabs and their processes are released — but WebKit keeps them alive, they stop being
+attributed to anything, and the reported number falls while the memory does not. Per-event:
+
+    policy=none     event 12:  attributed 1049   measured 1089   procs 10
+    policy=kestrel  event 12:  attributed  428   measured  668   procs 10
+    policy=kestrel  event 36:  attributed  749   measured  989   procs 13
+
+This is DEBUGGING.md §2 again — *tier-down improved `about:memory` while returning nothing
+to the OS* — at the scale of the whole benchmark, and I did not recognise it until the
+numbers were put side by side.
+
+**Corrected headline for this workload:**
+
+| | reduction vs unmanaged |
+|---|---|
+| discard-LRU | 973 / 804 = **1.21×** |
+| Kestrel | 973 / 762 = **1.28×** |
+
+not the ~1.43× the attributed figures gave. **And the "0% over budget" claim does not
+survive at all**: measured, Kestrel is over budget in 42% of samples and discard-LRU in 62%.
+The scheduler was demoting until its *own accounting* said it was under budget, which is not
+the same as being under budget.
+
+**What survives, and is now on firmer ground than before:** Kestrel holds less real memory
+than discard-LRU (762 MB against 804 MB) *while destroying fewer tabs* (6 against 8). On the
+attributed numbers it looked marginally worse on memory and better only on state loss. The
+comparative case for the ladder is stronger than the old figures suggested; the absolute
+case is weaker.
+
+**Not re-measured yet:** the per-rung costs (LIVE 128 MB, WARM 106 MB, COLD 39 MB) and the
+light-pages run. `probe` drives one tab at a time, so its attribution had far fewer ways to
+go wrong, but that is an argument rather than a measurement.

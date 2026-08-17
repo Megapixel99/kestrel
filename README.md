@@ -29,6 +29,14 @@ distribution, with almost all of the win from one item (the tab scheduler), one 
 (JIT tier-down), and the mechanism that makes the others real (heap compaction) missing from the
 list entirely.
 
+> **Correction (2026-08-14):** the engine figures below were per-tab *attributed* sums, and
+> attribution undercounts — by 4% with no policy and by 25–32% with one, because a demoted
+> tab's process stays alive and stops being counted. Re-measured against the browser's real
+> footprint, the reduction on heavy pages is **1.28×**, not 1.43×, and the "0% over budget"
+> claim becomes 42%. What survives is the comparison: Kestrel holds 762 MB against
+> discard-LRU's 804 MB while destroying fewer tabs. See the correction at the end of
+> [RESULTS-ENGINE.md](RESULTS-ENGINE.md).
+
 **Then it was built on a real engine.** The memory headline shrank to 1.4–2.6×, because the
 simulation priced a hibernated tab at 32 KB and WebKit charges 39 MB — a renderer process cannot
 be terminated on request. That sets a floor: `budget > live working set + (39 MB x parked tabs)`.
