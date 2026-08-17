@@ -123,8 +123,17 @@ final class Tab: NSObject {
     }
 
     /// Synchronous measure-and-store, for headless code where blocking is fine.
+    ///
+    /// Refreshes the process id from the web view first. Without this a tab whose pid was
+    /// never established, or was established for a process WebKit has since swapped,
+    /// measures 0 — and the benchmark's per-tab total silently loses a whole page. Main
+    /// thread only: it touches the web view.
     @discardableResult
     func measureNow() -> Int64 {
+        if let wv = webView, let direct = MemoryProbe.privateProcessIdentifier(of: wv) {
+            if pid != direct { pid = direct }
+            footprintKnown = true
+        }
         cachedBytes = sampleFootprint()
         return cachedBytes
     }

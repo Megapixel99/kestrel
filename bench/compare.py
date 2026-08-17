@@ -165,7 +165,14 @@ def write_markdown(data):
         A("")
         A("Run by `kestrel bench`, one policy per process. These are measured, not modelled.")
         A("")
-        A("| workload | policy | mean | peak | over budget | state lost | p95 restore |")
+        A("Two totals per row. **attributed** is the per-tab sum — one process id per tab —")
+        A("and **measured** is every WebContent process the run started, summed. They differ")
+        A("because a demoted tab releases its web view while WebKit keeps the process alive,")
+        A("so that memory stops being attributed to anything. The gap grows with how much a")
+        A("policy demotes, which is the axis this table exists to compare, so the attributed")
+        A("column is the one to distrust.")
+        A("")
+        A("| workload | policy | attributed | **measured** | over budget (attr → measured) | state lost | p95 restore |")
         A("|---|---|---|---|---|---|---|")
         for label, row in data["engine"].items():
             first = True
@@ -173,17 +180,28 @@ def write_markdown(data):
                 if policy not in row:
                     continue
                 r = row[policy]
+                measured = r.get("measured_mean_mb")
                 A((f"| {label} " if first else "| ")
-                  + f"| {policy} | {r.get('mean_mb','?')} M | {r.get('peak_mb','?')} M "
-                  + f"| {r.get('over_budget_pct','?')}% | {r.get('state_lost','?')} "
+                  + f"| {policy} | {r.get('mean_mb','?')} M "
+                  + (f"| **{measured} M** " if measured else "| _not recorded_ ")
+                  + f"| {r.get('over_budget_pct','?')}% → "
+                  + f"{r.get('measured_over_pct','?')}% "
+                  + f"| {r.get('state_lost','?')} "
                   + f"| {r.get('p95_restore_ms','?')} ms |")
                 first = False
         A("")
         heavy = data["engine"].get("heavy pages, 800 MB budget")
         if heavy and "none" in heavy and "kestrel" in heavy:
-            ratio = float(heavy["none"]["mean_mb"]) / float(heavy["kestrel"]["mean_mb"])
+            # The ratio is computed from the measured totals when they exist. Computing it
+            # from the attributed ones overstated the result by about 12% — the error is
+            # policy-dependent, so it cannot be corrected with a constant.
+            def total(row):
+                return float(row.get("measured_mean_mb") or row.get("mean_mb") or 1)
+            ratio = total(heavy["none"]) / max(1.0, total(heavy["kestrel"]))
+            basis = ("measured totals" if heavy["kestrel"].get("measured_mean_mb")
+                     else "attributed totals — see BROKEN.md #9")
             A(f"At a budget that clears the engine's hibernation floor, Kestrel is "
-              f"**{fmt(ratio,2)}x** below unmanaged and destroys "
+              f"**{fmt(ratio,2)}x** below unmanaged ({basis}) and destroys "
               f"**{heavy['kestrel'].get('state_lost')}** tabs, where discard-LRU destroys "
               f"**{heavy.get('discardlru',{}).get('state_lost','?')}**.")
             A("")

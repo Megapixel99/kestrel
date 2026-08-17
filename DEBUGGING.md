@@ -259,3 +259,60 @@ should not claim otherwise.
 blocker was cited in DESIGN.md §6 as a measured architectural result — declarative rules
 cost ~nothing per tab — and that claim now rests on a benchmark whose code is deleted.
 Measurements outlive the code that produced them only if the write-up says so.
+
+---
+
+## 11. Measuring the wrong process for eight months
+
+The browser reported a Jira board as costing 52 MB. The process rendering it held 511 MB.
+The 52 MB belonged to a different application's WebContent process that had been running for
+eight days.
+
+Three separate mistakes stacked, and each hid the next.
+
+**`ps` lists every WebContent process on the machine.** They are XPC services parented to
+launchd with identical command lines, so there is no parent and no client tag to filter on.
+Nothing filtered at all, so any process on the system was a candidate. The one sound
+discriminator available is age: a process older than the browser cannot be its.
+
+**`Tab.makeLive` picked with `.first` on an unordered set.** WebKit spawns several content
+processes at once — five on a measured launch — and the diff-at-creation trick assumed it
+would see exactly one new pid. Whichever it happened to grab, the tab reported for its
+lifetime.
+
+**Nothing distinguished "cannot measure" from "costs nothing".** Both rendered `0 MB`, so a
+live page the browser had lost track of was counted as free by the scheduler: never in the
+total, never a demotion candidate.
+
+### What made it survive so long
+
+The number was always *plausible*. 52 MB for a page is unremarkable; so is 115, or 399. A
+wrong number in a believable range is invisible in a way a crash is not, and every test
+written against it passed, because the tests asked the browser what it thought rather than
+checking the browser against the machine.
+
+It took a screen recording to catch — specifically, the same figure appearing before and
+after loading a completely different page. That is a temporal observation, and no single
+screenshot or assertion contains it.
+
+### The consequence for the published results
+
+The benchmark's headline was a per-tab attributed sum, so it inherited all of this. Worse,
+the error is **policy-dependent**: with no policy every process belongs to a live tab and
+attribution captures 96%, but demoting tabs leaves processes alive and unattributed, so the
+managed policies undercounted by 25–32%. The reduction fell from 1.43x to 1.28x and "0% over
+budget" became 42%. See the correction at the end of RESULTS-ENGINE.md.
+
+### The fixes
+
+`WKWebView._webProcessIdentifier` — private, verified on macOS 15.5 — is asked at every
+point a tab's process is established, with `ps` diffing filtered by age as fallback. The
+whole-browser total is measured independently by summing the run's own processes, which
+needs no attribution and therefore cannot be wrong in this way. Where the two disagree by
+more than 20%, the UI says so.
+
+**The lesson is the same one as §2, which this project had already learned:** an
+instrument that reports on itself will report success. B1 improved `about:memory` while
+returning nothing to the OS; this improved the tab total while the memory stayed in
+processes nobody was counting. Both times the fix was to measure from outside the thing
+being measured.
