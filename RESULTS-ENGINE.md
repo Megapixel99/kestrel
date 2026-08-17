@@ -300,9 +300,26 @@ heavy pages, 800 MB budget, 40 events:
 
 | policy | attributed | **measured** | tabs accounted for | over budget: attributed → measured |
 |---|---|---|---|---|
-| none | 933.3 MB | **973.0 MB** | 96% | 82% → 82% |
-| discard-LRU | 547.8 MB | **804.3 MB** | 68% | 2% → **62%** |
-| Kestrel | 571.3 MB | **761.6 MB** | 75% | 2% → **42%** |
+| none | 975.9 MB | **974.9 MB** | **100%** | 82% → 82% |
+| discard-LRU | 547.1 MB | **802.2 MB** | 68% | 2% → **62%** |
+| Kestrel | 587.9 MB | **788.1 MB** | 75% | 2% → **48%** |
+
+*Three runs. Kestrel measured 1.28x, 1.28x, 1.24x below unmanaged; discard-LRU 1.21x, 1.20x,
+1.22x. The figures above are the last, run end-to-end on a single binary.*
+
+**The 100% row is the important one.** Once `_webProcessIdentifier` replaced pid-diffing,
+attribution became exact where it can be: with every tab live and every process owned by a
+tab, attributed and measured agree to within 1 MB. So the 25–32% gap under the demoting
+policies is **not measurement error** — it is real memory in processes that outlived the tabs
+they belonged to. Demoting a tab releases its web view; WebKit keeps the process; nobody owns
+that memory.
+
+That splits a question this project could not previously answer:
+
+| | share of the gap |
+|---|---|
+| mis-attribution | ~0% |
+| processes orphaned by demotion | all of it |
 
 **The error is not uniform, and it favours exactly the policies this benchmark exists to
 promote.** With no policy, every process belongs to a live tab and attribution captures 96%.
@@ -321,16 +338,17 @@ numbers were put side by side.
 
 | | reduction vs unmanaged |
 |---|---|
-| discard-LRU | 973 / 804 = **1.21×** |
-| Kestrel | 973 / 762 = **1.28×** |
+| discard-LRU | 975 / 802 = **1.22×** |
+| Kestrel | 975 / 788 = **1.24×** |
 
 not the ~1.43× the attributed figures gave. **And the "0% over budget" claim does not
-survive at all**: measured, Kestrel is over budget in 42% of samples and discard-LRU in 62%.
+survive at all**: measured, Kestrel is over budget in 48% of samples and discard-LRU in 62%.
 The scheduler was demoting until its *own accounting* said it was under budget, which is not
 the same as being under budget.
 
 **What survives, and is now on firmer ground than before:** Kestrel holds less real memory
-than discard-LRU (762 MB against 804 MB) *while destroying fewer tabs* (6 against 8). On the
+than discard-LRU (788 MB against 802 MB) *while destroying fewer tabs* (6 against 8) and
+spending far less time over budget (48% against 62%). On the
 attributed numbers it looked marginally worse on memory and better only on state loss. The
 comparative case for the ladder is stronger than the old figures suggested; the absolute
 case is weaker.

@@ -30,11 +30,12 @@ distribution, with almost all of the win from one item (the tab scheduler), one 
 list entirely.
 
 > **Correction (2026-08-14):** the engine figures below were per-tab *attributed* sums, and
-> attribution undercounts — by 4% with no policy and by 25–32% with one, because a demoted
-> tab's process stays alive and stops being counted. Re-measured against the browser's real
-> footprint, the reduction on heavy pages is **1.28×**, not 1.43×, and the "0% over budget"
-> claim becomes 42%. What survives is the comparison: Kestrel holds 762 MB against
-> discard-LRU's 804 MB while destroying fewer tabs. See the correction at the end of
+> attribution undercounts once tabs are demoted. With `_webProcessIdentifier` the
+> attribution is now exact where it can be — 100% with every tab live — which shows the
+> remaining 25–32% gap is not measurement error but **real memory in processes orphaned by
+> demotion**. Re-measured, the reduction on heavy pages is **1.24×**, not 1.43×, and "0% over
+> budget" is really 48%. What survives is the comparison: Kestrel holds 788 MB against
+> discard-LRU's 802 MB while destroying 6 tabs to its 8. See the correction at the end of
 > [RESULTS-ENGINE.md](RESULTS-ENGINE.md).
 
 **Then it was built on a real engine.** The memory headline shrank to 1.4–2.6×, because the
