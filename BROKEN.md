@@ -146,7 +146,7 @@ normally, so the fixes here cost it nothing.
 
 ---
 
-## 9. Per-tab memory attribution is unreliable — the cause, found
+## ~~9. Per-tab memory attribution is unreliable~~ — fixed, with one residual limit
 
 **Severity:** high, and it reaches further than the browser's UI.
 
@@ -187,9 +187,16 @@ that attribution step, including the rung costs in RESULTS-ENGINE.md (LIVE 128 M
 to have been correct, so those numbers are probably sound — but *probably* is the honest
 word and they should be re-measured against the summed total before being quoted again.
 
-**Still open:** attribution itself. Picking correctly among several simultaneous processes
-needs something WebKit does not expose. The browser now says when it cannot, rather than
-showing a plausible wrong number.
+**Fixed 2026-08-14.** `WKWebView._webProcessIdentifier` answers directly — private API,
+verified working on macOS 15.5 (pid resolves, process is live, footprint 92 MB). Used at
+every point a tab's process is established, with `ps` diffing as fallback. In the test
+harness the attributed total went from 36% of the real footprint to 80%.
+
+**Residual limit, and it is structural:** attribution is exact only while a web view
+exists. A COLD or STUB tab has no view to ask, and WebKit keeps its process alive after the
+view is released, so that memory belongs to no tab. This is why the whole-browser total is
+measured separately rather than summed from tabs — and why the benchmark correction above
+matters: a per-tab sum necessarily undercounts once anything is demoted.
 
 ---
 

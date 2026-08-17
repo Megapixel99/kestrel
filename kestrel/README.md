@@ -163,8 +163,22 @@ processes alive for minutes, so two policies in one process would contaminate ea
 
 ## Things worth knowing before reading the code
 
-**`WKWebView` exposes no process id.** Tabs are created one at a time and their WebContent
-process is identified by diffing the pid set. It works, and it is the only way.
+**`WKWebView` exposes no *public* process id — but it does expose one.** This file used to
+say diffing `ps` around tab creation "works, and it is the only way". Both halves were
+wrong. It does not reliably work: WebKit spawns several content processes at once, the diff
+picks one arbitrarily, and the tab reports that figure for good — a browser was seen
+reporting 52 MB for a page whose process held 511 MB. And it is not the only way:
+`_webProcessIdentifier` answers directly. That is private API, and using it is a deliberate
+trade — this is a research browser whose entire subject is memory, and a guessed pid makes
+every per-tab number unfalsifiable. It is called through `responds(to:)` with `nil` on
+anything unexpected, and the diffing path remains as a fallback.
+
+**Per-tab attribution is exact only while a web view exists.** A COLD or STUB tab has no
+view to ask, and WebKit keeps its process alive after the view is gone, so that memory
+belongs to no tab. The browser's **total** is therefore measured separately — every
+WebContent process younger than the browser, summed — which needs no attribution and cannot
+miss a process it never guessed about. Where the two disagree by more than 20%, the status
+line says so.
 
 **WebKit will not terminate a content process on demand.** Releasing the view, per-tab
 `WKProcessPool`, and navigate-away-then-release were all tested; the process outlived its

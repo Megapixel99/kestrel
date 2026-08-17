@@ -352,6 +352,26 @@ enum SessionTest {
             // arbitrarily — so the total is measured directly and the two are compared.
             browser.sampleMemory()
             settle(5)
+            // Does the private property resolve at all on this macOS? Everything about
+            // per-tab attribution now prefers it, so whether it answers is worth knowing
+            // explicitly rather than inferring from a number looking plausible.
+            let direct = MemoryProbe.privateProcessIdentifier(of: mView)
+            check("the web view reports its own process id",
+                  direct != nil,
+                  direct.map { "pid \($0)" } ?? "unavailable — falling back to ps diffing")
+            if let direct {
+                check("...and it is a live WebContent process",
+                      MemoryProbe.isAlive(direct)
+                        && MemoryProbe.webContentPids().contains(direct),
+                      "pid \(direct)")
+                check("...and it agrees with what the tab is using",
+                      mTab.pid == direct,
+                      "tab has \(mTab.pid.map(String.init) ?? "none"), view says \(direct)")
+                let fp = MemoryProbe.footprint(pid: direct) ?? 0
+                check("...and that process has a real footprint",
+                      fp > 5 * 1_048_576, "\(fp / 1_048_576) MB")
+            }
+
             check("the browser measures its own total footprint",
                   browser.measuredTotalBytes > 0,
                   "\(browser.measuredTotalBytes / 1_048_576) MB measured, "

@@ -1046,7 +1046,23 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
                 && (tab.pid == nil || !live.contains(tab.pid!))
         }
         guard !orphaned.isEmpty else { return }
-        for tab in orphaned { tab.footprintKnown = false }
+
+        // Ask each web view for its own process before inferring anything. This path used
+        // to mark a tab unmeasured while the view could have answered immediately — the
+        // direct lookup existed but nothing on this route called it.
+        var stillOrphaned: [Tab] = []
+        for tab in orphaned {
+            if let wv = tab.webView,
+               let direct = MemoryProbe.privateProcessIdentifier(of: wv),
+               MemoryProbe.isAlive(direct) {
+                tab.pid = direct
+                tab.footprintKnown = true
+            } else {
+                tab.footprintKnown = false
+                stillOrphaned.append(tab)
+            }
+        }
+        guard !stillOrphaned.isEmpty else { return }
 
         let claimed = Set(tabs.compactMap { tab -> Int32? in
             guard let p = tab.pid, live.contains(p) else { return nil }
@@ -1054,7 +1070,7 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
         })
         var unclaimed = live.subtracting(claimed)
         guard !unclaimed.isEmpty else {
-            for tab in orphaned { tab.pid = nil }
+            for tab in stillOrphaned { tab.pid = nil }
             return
         }
 
@@ -1064,12 +1080,12 @@ final class BrowserWindowController: NSObject, WKNavigationDelegate, WKUIDelegat
         // process twice. An earlier version picked "the largest unclaimed process for the
         // foreground tab" and, in the test, moved a tab reporting 29 MB onto a 13 MB
         // process that belonged to something else.
-        if orphaned.count == 1, unclaimed.count == 1 {
-            orphaned[0].pid = unclaimed.first
-            orphaned[0].footprintKnown = true
+        if stillOrphaned.count == 1, unclaimed.count == 1 {
+            stillOrphaned[0].pid = unclaimed.first
+            stillOrphaned[0].footprintKnown = true
             return
         }
-        for tab in orphaned {
+        for tab in stillOrphaned {
             tab.pid = nil
             tab.footprintKnown = false
         }
