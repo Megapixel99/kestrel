@@ -4,6 +4,11 @@ A browser whose memory scales with what you're looking at rather than what you h
 a design, a measurement harness that tests it, and a working macOS browser that implements
 it on WebKit.
 
+**Write-up:** [What a Hibernated Browser Tab Actually
+Costs](https://sethwheeler.dev/blog/hibernated-tab-cost/) — the simulator priced a
+hibernated tab at 32 KB and real WebKit charges 39 MB, which is the whole gap between
+the 7.9–11.5x the design claimed and the 1.4–2.6x it delivered.
+
 - **[DESIGN.md](DESIGN.md)** — the architecture. Annotated with measured results where the
   data contradicted the original claims.
 - **[RESULTS.md](RESULTS.md)** — what happened when items 1–4 were built and measured, and
