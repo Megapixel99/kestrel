@@ -1,0 +1,7 @@
+# Third-party notices
+
+Kestrel bundles no third-party code. Dark Reader (MIT) is loaded at runtime from
+~/.kestrel/darkreader.js or node_modules/ if you install it, and is not
+distributed here. The userscript and screenshot features follow published
+specifications and public API shapes; no code was taken from Tampermonkey
+(GPLv3) or from Longshot.
