@@ -9,6 +9,8 @@ Costs](https://sethwheeler.dev/blog/hibernated-tab-cost/) — the simulator pric
 hibernated tab at 32 KB and real WebKit charges 39 MB, which is the whole gap between
 the 7.9–11.5x the design claimed and the 1.4–2.6x it delivered.
 
+Built with Claude as a coding assistant.
+
 - **[DESIGN.md](DESIGN.md)** — the architecture. Annotated with measured results where the
   data contradicted the original claims.
 - **[RESULTS.md](RESULTS.md)** — what happened when items 1–4 were built and measured, and
@@ -57,11 +59,13 @@ be terminated on request. That sets a floor: `budget > live working set + (39 MB
 Below the floor it is not merely less effective — it is worse than unmanaged, because every
 demotion strands a WebContent process WebKit will not reclaim on request.
 
-**Above that floor the design does what it promised**: at a 800 MB budget over 10 heavy tabs it
-holds the bound with **zero destroyed tabs**, where discard-LRU destroys 5 for 1.5% less memory.
-Below the floor it degrades toward discard-LRU. Its advantage also scales with how much a tab
-compresses from live to cold — 3.28× for heavy pages, 0.95× for light ones, and at 0.95× there is
-nowhere to put anything. See [RESULTS-ENGINE.md](RESULTS-ENGINE.md).
+**Above that floor the design beats discard-LRU, though it does not hold the budget**: at an
+800 MB budget over 10 heavy tabs it holds **788 MB against discard-LRU's 802 MB**, destroys
+**6 tabs to its 8**, and is over budget in 48% of samples against 62%. (This paragraph used to
+say zero destroyed tabs against 5, with the bound held; those were attributed sums, retracted
+in the correction above.) Below the floor it degrades toward discard-LRU. Its advantage also
+scales with how much a tab compresses from live to cold — 3.28× for heavy pages, 0.95× for
+light ones, and at 0.95× there is nowhere to put anything. See [RESULTS-ENGINE.md](RESULTS-ENGINE.md).
 
 Checking the design against shipping browsers afterwards narrowed it further: Firefox has
 discarded background-tab images since v4, already has an mmap'd cross-process bytecode cache
