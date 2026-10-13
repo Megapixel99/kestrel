@@ -7,7 +7,8 @@ it on WebKit.
 **Write-up:** [What a Hibernated Browser Tab Actually
 Costs](https://sethwheeler.dev/blog/hibernated-tab-cost/) — the simulator priced a
 hibernated tab at 32 KB and real WebKit charges 39 MB, which is the whole gap between
-the 7.9–11.5x the design claimed and the 1.4–2.6x it delivered.
+the 7.9–11.5x the design claimed and what it delivered: 1.24x on heavy pages, and 1.35x
+worse than unmanaged on light ones.
 
 Built with Claude as a coding assistant.
 
@@ -63,9 +64,10 @@ demotion strands a WebContent process WebKit will not reclaim on request.
 800 MB budget over 10 heavy tabs it holds **788 MB against discard-LRU's 802 MB**, destroys
 **6 tabs to its 8**, and is over budget in 48% of samples against 62%. (This paragraph used to
 say zero destroyed tabs against 5, with the bound held; those were attributed sums, retracted
-in the correction above.) Below the floor it degrades toward discard-LRU. Its advantage also
-scales with how much a tab compresses from live to cold — 3.28× for heavy pages, 0.95× for
-light ones, and at 0.95× there is nowhere to put anything. See [RESULTS-ENGINE.md](RESULTS-ENGINE.md).
+in the correction above.) Below the floor both policies do worse than managing nothing
+(Kestrel 1.35×, discard-LRU 1.62×). Its advantage also scales with how much a tab compresses
+from live to cold — 3.28× for heavy pages, 0.95× for light ones, and at 0.95× there is nowhere
+to put anything. See [RESULTS-ENGINE.md](RESULTS-ENGINE.md).
 
 Checking the design against shipping browsers afterwards narrowed it further: Firefox has
 discarded background-tab images since v4, already has an mmap'd cross-process bytecode cache
